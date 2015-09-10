@@ -39,6 +39,20 @@
 #include "wdog_debug.h"
 
 #ifdef CONFIG_HUAWEI_KERNEL
+#include <linux/fcntl.h>
+#include <linux/syscalls.h>
+
+#define MISC_DEVICE "/dev/block/platform/msm_sdcc.1/by-name/misc"
+#define USB_UPDATE_POLL_TIME  2000
+struct bootloader_message {
+    char command[32];
+    char status[32];
+    char recovery[768];
+    char stage[32];
+};
+#endif
+
+#ifdef CONFIG_HUAWEI_KERNEL
 #include <linux/huawei_apanic.h>
 #endif
 #ifdef CONFIG_HUAWEI_FEATURE_NFF
@@ -164,6 +178,64 @@ static bool get_dload_mode(void)
 	return dload_mode_enabled;
 }
 
+#ifdef CONFIG_HUAWEI_KERNEL
+/*This function write usb_update sign to the misc partion,
+   if write successfull, then hard restart the device*/
+void huawei_restart(void)
+{
+    struct bootloader_message boot;
+    int fd  = 0;
+    
+    memset((void*)&boot, 0x0, sizeof(struct bootloader_message));    
+    strlcpy(boot.command, "boot-recovery", sizeof(boot.command));
+    strcpy(boot.recovery, "recovery\n");
+    strcat(boot.recovery, "--");
+    strcat(boot.recovery, "usb_update");
+
+    fd = sys_open(MISC_DEVICE,O_RDWR,0);
+    if( fd < 0 )
+    {
+        pr_err("open the devices %s fail",MISC_DEVICE);
+        return ;
+    }
+    if(sys_write((unsigned int )fd, (char*)&boot, sizeof(boot)) < 0)
+    {
+        sys_close(fd);
+        pr_err("write to the devices %s fail",MISC_DEVICE);
+        return;
+    }
+    sys_close(fd);
+    sys_sync();
+    kernel_restart(NULL);
+}
+/*This function poll the address restart_reason,if 
+   there is the magic SDUPDATE_FLAG_MAGIC_NUM, restart
+   the devices.,the magic is written by modem when the
+   user click the usb update tool to update*/
+int usb_update_thread(void *__unused)
+{
+    unsigned int  dload_magic = 0;
+    for(;;)
+    {
+        if(NULL != restart_reason)
+        {
+             dload_magic = __raw_readl(restart_reason);
+        }
+        else
+        {
+             pr_info("restart_reason is null,wait for ready\n");
+        }
+        if(SDUPDATE_FLAG_MAGIC_NUM == dload_magic)
+        {
+            pr_info("update mode, restart to usb update\n");
+            huawei_restart();
+        }
+        msleep(USB_UPDATE_POLL_TIME);
+    }
+    return 0;
+}
+#endif
+
 static void enable_emergency_dload_mode(void)
 {
 	if (emergency_dload_mode_addr) {
@@ -175,6 +247,10 @@ static void enable_emergency_dload_mode(void)
 		__raw_writel(EMERGENCY_DLOAD_MAGIC3,
 				emergency_dload_mode_addr +
 				(2 * sizeof(unsigned int)));
+
+		/* Need disable the pmic wdt, then the emergency dload mode
+		 * will not auto reset. */
+		qpnp_pon_wd_config(0);
 		mb();
 	}
 }
@@ -438,6 +514,8 @@ static void msm_restart_prepare(const char *cmd)
 			__raw_writel(0x77665500, restart_reason);
 		} else if (!strncmp(cmd, "recovery", 8)) {
 			__raw_writel(0x77665502, restart_reason);
+		} else if (!strcmp(cmd, "rtc")) {
+			__raw_writel(0x77665503, restart_reason);
 		} else if (!strncmp(cmd, "oem-", 4)) {
 			unsigned long code;
 			code = simple_strtoul(cmd + 4, NULL, 16) & 0xff;

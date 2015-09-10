@@ -18,13 +18,13 @@
 
 #include <linux/ioctl.h>
 #include <linux/time.h>
-
 enum android_alarm_type {
 	/* return code bit numbers or set alarm arg */
 	ANDROID_ALARM_RTC_WAKEUP,
 	ANDROID_ALARM_RTC,
 	ANDROID_ALARM_ELAPSED_REALTIME_WAKEUP,
 	ANDROID_ALARM_ELAPSED_REALTIME,
+	ANDROID_ALARM_RTC_POWEROFF_WAKEUP,
 	ANDROID_ALARM_SYSTEMTIME,
 
 	ANDROID_ALARM_TYPE_COUNT,
@@ -32,7 +32,6 @@ enum android_alarm_type {
 	/* return code bit numbers */
 	/* ANDROID_ALARM_TIME_CHANGE = 16 */
 };
-
 enum android_alarm_return_flags {
 	ANDROID_ALARM_RTC_WAKEUP_MASK = 1U << ANDROID_ALARM_RTC_WAKEUP,
 	ANDROID_ALARM_RTC_MASK = 1U << ANDROID_ALARM_RTC,
@@ -40,10 +39,11 @@ enum android_alarm_return_flags {
 				1U << ANDROID_ALARM_ELAPSED_REALTIME_WAKEUP,
 	ANDROID_ALARM_ELAPSED_REALTIME_MASK =
 				1U << ANDROID_ALARM_ELAPSED_REALTIME,
+        ANDROID_ALARM_RTC_POWEROFF_WAKEUP_MASK =
+                                1U << ANDROID_ALARM_RTC_POWEROFF_WAKEUP,
 	ANDROID_ALARM_SYSTEMTIME_MASK = 1U << ANDROID_ALARM_SYSTEMTIME,
 	ANDROID_ALARM_TIME_CHANGE_MASK = 1U << 16
 };
-
 /* Disable alarm */
 #define ANDROID_ALARM_CLEAR(type)           _IO('a', 0 | ((type) << 4))
 
@@ -58,5 +58,5 @@ enum android_alarm_return_flags {
 #define ANDROID_ALARM_SET_RTC               _IOW('a', 5, struct timespec)
 #define ANDROID_ALARM_BASE_CMD(cmd)         (cmd & ~(_IOC(0, 0, 0xf0, 0)))
 #define ANDROID_ALARM_IOCTL_TO_TYPE(cmd)    (_IOC_NR(cmd) >> 4)
-
+#define ANDROID_RTC_ALARM_SET ANDROID_ALARM_SET(ANDROID_ALARM_RTC_POWEROFF_WAKEUP)
 #endif

@@ -149,7 +149,6 @@
 		qcom,sensor-mode = <0>;
 		qcom,sensor-type = <0>;
 		qcom,cci-master = <0>;
-		qcom,product-name = "g730";
 		status = "ok";
 	};
 	qcom,camera@7e {
@@ -189,7 +188,6 @@
 		qcom,sensor-position = <0>;
 		qcom,sensor-mode = <0>;
 		qcom,cci-master = <0>;
-		qcom,product-name = "g730";
 		status = "ok";
 	};
 	qcom,camera@6C {

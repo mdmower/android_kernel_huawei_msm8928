@@ -22,6 +22,5 @@
 void* huawei_get_log_buf_addr(void);
 int huawei_get_log_buf_len(void);
 #endif
-void clear_hw_reset(void);
 
 #endif

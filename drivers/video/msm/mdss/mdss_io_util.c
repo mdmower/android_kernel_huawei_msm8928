@@ -130,7 +130,7 @@ void msm_dss_iounmap(struct dss_io_data *io_data)
 int msm_dss_config_vreg(struct device *dev, struct dss_vreg *in_vreg,
 	int num_vreg, int config)
 {
-	int i = 0, rc = 0;
+	int i = 0, rc = 0, ret = 0;
 	struct dss_vreg *curr_vreg = NULL;
 	enum dss_vreg_type type;
 
@@ -182,9 +182,11 @@ int msm_dss_config_vreg(struct device *dev, struct dss_vreg *in_vreg,
 	return 0;
 
 vreg_unconfig:
-if (type == DSS_REG_LDO)
-	regulator_set_optimum_mode(curr_vreg->vreg, 0);
-
+if (type == DSS_REG_LDO){
+	ret = regulator_set_optimum_mode(curr_vreg->vreg, 0);
+	if(ret <= 0)
+		DEV_ERR("%s: regulator set optimum mode fail\n",__func__);
+}
 vreg_set_voltage_fail:
 	regulator_put(curr_vreg->vreg);
 	curr_vreg->vreg = NULL;
@@ -201,7 +203,7 @@ vreg_get_fail:
 
 int msm_dss_enable_vreg(struct dss_vreg *in_vreg, int num_vreg, int enable)
 {
-	int i = 0, rc = 0;
+	int i = 0, rc = 0, ret = 0;
 	if (enable) {
 		for (i = 0; i < num_vreg; i++) {
 			rc = PTR_RET(in_vreg[i].vreg);
@@ -236,8 +238,10 @@ int msm_dss_enable_vreg(struct dss_vreg *in_vreg, int num_vreg, int enable)
 			if (regulator_is_enabled(in_vreg[i].vreg)) {
 				if (in_vreg[i].pre_off_sleep)
 					msleep(in_vreg[i].pre_off_sleep);
-				regulator_set_optimum_mode(in_vreg[i].vreg,
+				ret = regulator_set_optimum_mode(in_vreg[i].vreg,
 					in_vreg[i].disable_load);
+				if (ret <= 0)
+					DEV_ERR("%s:regulator set optimum mode fail\n",__func__);
 				regulator_disable(in_vreg[i].vreg);
 				if (in_vreg[i].post_off_sleep)
 					msleep(in_vreg[i].post_off_sleep);
@@ -246,14 +250,17 @@ int msm_dss_enable_vreg(struct dss_vreg *in_vreg, int num_vreg, int enable)
 	return rc;
 
 disable_vreg:
-	regulator_set_optimum_mode(in_vreg[i].vreg, in_vreg[i].disable_load);
-
+	ret = regulator_set_optimum_mode(in_vreg[i].vreg, in_vreg[i].disable_load);
+	if (ret <= 0)
+		DEV_ERR("%s:regulator set optimum mode fail\n",__func__);
 vreg_set_opt_mode_fail:
 	for (i--; i >= 0; i--) {
 		if (in_vreg[i].pre_off_sleep)
 			msleep(in_vreg[i].pre_off_sleep);
-		regulator_set_optimum_mode(in_vreg[i].vreg,
+		ret = regulator_set_optimum_mode(in_vreg[i].vreg,
 			in_vreg[i].disable_load);
+		if(ret <= 0)
+			DEV_ERR("%s:regulator set optimum mode fail\n",__func__);
 		regulator_disable(in_vreg[i].vreg);
 		if (in_vreg[i].post_off_sleep)
 			msleep(in_vreg[i].post_off_sleep);
@@ -261,7 +268,6 @@ vreg_set_opt_mode_fail:
 
 	return rc;
 } /* msm_dss_enable_vreg */
-
 int msm_dss_enable_gpio(struct dss_gpio *in_gpio, int num_gpio, int enable)
 {
 	int i = 0, rc = 0;

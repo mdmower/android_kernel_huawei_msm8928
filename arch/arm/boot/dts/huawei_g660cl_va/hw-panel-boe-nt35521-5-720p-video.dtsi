@@ -57,22 +57,21 @@
 			29 01 00 00 00 00 02 6F 01
 			29 01 00 00 00 00 02 F9 46
 			29 01 00 00 00 00 06 F0 55 AA 52 08 00
-			29 01 00 00 00 00 02 B1 60
 			29 01 00 00 00 00 06 BD 01 A0 10 10 01
 			29 01 00 00 00 00 05 B8 01 02 0C 02
 			29 01 00 00 00 00 03 BB 11 11
 			29 01 00 00 00 00 03 BC 00 00
 			29 01 00 00 00 00 02 B6 04
 			29 01 00 00 00 00 02 C8 80
-			29 01 00 00 00 00 0D CC 01 36 87 00 00 00 00 00 00 00 00 00
+			29 01 00 00 00 00 02 CC 01
 			29 01 00 00 00 00 11 D1 01 05 09 0D 10 14 18 1C 20 24 28 2C 30 34 38 3C
-			29 01 00 00 00 00 0D D7 28 2A 30 28 26 22 00 00 00 00 00 00
+			29 01 00 00 00 00 0D D7 28 2A 30 34 38 3D 00 00 00 00 00 00
 			29 01 00 00 00 00 0D D8 05 05 00 00 00 00 05 05 00 00 00 00
 			29 01 00 00 00 00 06 F0 55 AA 52 08 01
 			29 01 00 00 00 00 03 B0 09 09
 			29 01 00 00 00 00 03 B1 09 09
-			29 01 00 00 00 00 03 BC 90 00
-			29 01 00 00 00 00 03 BD 90 00
+			29 01 00 00 00 00 03 BC 80 00
+			29 01 00 00 00 00 03 BD 80 00
 			29 01 00 00 00 00 02 CA 00
 			29 01 00 00 00 00 02 C0 0C
 			29 01 00 00 00 00 03 B5 03 03
@@ -102,7 +101,6 @@
 			29 01 00 00 00 00 03 BB 31 31
 			29 01 00 00 00 00 03 BC 31 31
 			29 01 00 00 00 00 03 BD 31 34
-			29 01 00 00 00 00 03 BE 34 34
 			29 01 00 00 00 00 03 BF 34 31
 			29 01 00 00 00 00 03 C0 31 31
 			29 01 00 00 00 00 03 C1 03 01
@@ -201,7 +199,7 @@
 		qcom,mdss-dsi-t-clk-post = <0x04>;
 		qcom,mdss-dsi-t-clk-pre = <0x19>;
 		qcom,mdss-dsi-bl-min-level = <9>;
-		qcom,mdss-dsi-bl-max-level = <250>;
+		qcom,mdss-dsi-bl-max-level = <255>;
 		qcom,mdss-dsi-dma-trigger = "trigger_sw";
 		qcom,mdss-dsi-mdp-trigger = "none";
 		qcom,mdss-dsi-bl-pmic-control-type = "bl_ctrl_dcs";
@@ -209,9 +207,9 @@
 		qcom,panel-inverse-on-cmds = [05 01 00 00 00 00 02 21 00];
 		qcom,inverse-on-cmds-dsi-state = "dsi_lp_mode";
 		qcom,inverse-off-cmds-dsi-state = "dsi_lp_mode";
-		qcom,panel-cabc-ui-cmds = [15 01 00 00 00 00 02 55 81
+		qcom,panel-cabc-ui-cmds = [15 01 00 00 00 00 02 55 01
 					15 01 00 00 00 00 02 53 24];
-		qcom,panel-cabc-video-cmds = [15 01 00 00 00 00 02 55 83
+		qcom,panel-cabc-video-cmds = [15 01 00 00 00 00 02 55 03
 					15 01 00 00 00 00 02 53 2C];
 		qcom,cabc-ui-cmds-dsi-state = "dsi_lp_mode";
 		qcom,cabc-video-cmds-dsi-state = "dsi_lp_mode";

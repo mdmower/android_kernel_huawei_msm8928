@@ -107,24 +107,24 @@ static int hw_imx134_match_module(struct msm_sensor_ctrl_t *s_ctrl)
 
 	/*add project name for the project menu*/
 	s_ctrl->sensordata->sensor_name = "hw_imx134";
-	strncpy(s_ctrl->sensordata->sensor_info->sensor_project_name, "23060131FA-IMX-L", strlen("23060131FA-IMX-L")+1);
+	strncpy(s_ctrl->sensordata->sensor_info->sensor_project_name, "23060131FA-IMX-S", strlen("23060131FA-IMX-S")+1);
 
 	pr_info("%s %d : hw_imx134_match_module sensor_name=%s, sensor_project_name=%s \n",  __func__, __LINE__,
             s_ctrl->sensordata->sensor_name, s_ctrl->sensordata->sensor_info->sensor_project_name);
 	pr_info("check module id from camera id PIN:OK \n");
 
-	app_info_set("camera_main", s_ctrl->sensordata->sensor_info->sensor_project_name);
+	app_info_set("camera_main", s_ctrl->sensordata->sensor_name);
 
-	if(!strncmp(s_ctrl->sensordata->sensor_info->sensor_project_name, "23060131FA-IMX-L", MAX_SENSOR_NAME))
+	if(!strncmp(s_ctrl->sensordata->sensor_info->sensor_project_name, "23060131FA-IMX-S", MAX_SENSOR_NAME))
 	{
-		/*if it's liteon module, we need to get the actuator ctrl to change af parameter to index 4*/
+		/*if it's sunny module, we need to get the actuator ctrl to change af parameter to index 4*/
 		msm_sd_get_actdev(subdev_act);
 		for(i=0; i<MAX_ACTUATOR_NUMBER; i++)
 		{
 			if(NULL != subdev_act[i])
 				a_ctrl =  subdev_act[i]->dev_priv;
 			if(NULL != a_ctrl)
-				a_ctrl->cam_name = MSM_ACTUATOR_MAIN_CAM_4;
+				a_ctrl->cam_name = MSM_ACTUATOR_MAIN_CAM_6;
 		}
 	}
 
@@ -156,6 +156,11 @@ static int32_t hw_imx134_platform_probe(struct platform_device *pdev)
 	
 	pr_err("%s , %d \n", __func__, __LINE__);
 	match = of_match_device(hw_imx134_dt_match, &pdev->dev);
+	 if(!match) 
+ 	{
+		pr_err("%s:var match equal null !\n",__func__);
+		return 0;
+ 	}
 	rc = msm_sensor_platform_probe(pdev, match->data);
 
 	return rc;

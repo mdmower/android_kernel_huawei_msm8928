@@ -1,4 +1,4 @@
-/* Copyright (c) 2012-2013, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2014, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -23,9 +23,14 @@
 #include <linux/input.h>
 #include <linux/log2.h>
 #include <linux/qpnp/power-on.h>
-#ifdef CONFIG_HUAWEI_KERNEL
-#include <linux/huawei_apanic.h>
-#endif
+#include <linux/time.h>
+#define PMIC_VER_8941           0x01
+#define PMIC_VERSION_REG        0x0105
+#define PMIC_VERSION_REV4_REG   0x0103
+
+#define PMIC8941_V1_REV4        0x01
+#define PMIC8941_V2_REV4        0x02
+
 /* Common PNP defines */
 #define QPNP_PON_REVISION2(base)		(base + 0x01)
 
@@ -56,8 +61,17 @@
 #define QPNP_PON_KPDPWR_RESIN_S2_CNTL2(base)	(base + 0x4B)
 #define QPNP_PON_PS_HOLD_RST_CTL(base)		(base + 0x5A)
 #define QPNP_PON_PS_HOLD_RST_CTL2(base)		(base + 0x5B)
-#define QPNP_PON_TRIGGER_EN(base)		(base + 0x80)
+#define QPNP_PON_WD_RST_S2_CTL(base)		(base + 0x56)
+#define QPNP_PON_WD_RST_S2_CTL2(base)		(base + 0x57)
+#define QPNP_PON_S3_SRC(base)			(base + 0x74)
 #define QPNP_PON_S3_DBC_CTL(base)		(base + 0x75)
+#define QPNP_PON_TRIGGER_EN(base)		(base + 0x80)
+
+#define QPNP_PON_S3_SRC_KPDPWR			0
+#define QPNP_PON_S3_SRC_RESIN			1
+#define QPNP_PON_S3_SRC_KPDPWR_OR_RESIN		2
+#define QPNP_PON_S3_SRC_KPDPWR_AND_RESIN	3
+#define QPNP_PON_S3_SRC_MASK			0x3
 
 #define QPNP_PON_WARM_RESET_TFT			BIT(4)
 
@@ -79,6 +93,7 @@
 #define QPNP_PON_RESIN_BARK_N_SET		BIT(4)
 #define QPNP_PON_KPDPWR_RESIN_BARK_N_SET	BIT(5)
 
+#define QPNP_PON_WD_EN			BIT(7)
 #define QPNP_PON_RESET_EN			BIT(7)
 #define QPNP_PON_POWER_OFF_MASK			0xF
 
@@ -284,6 +299,32 @@ int qpnp_pon_is_warm_reset(void)
 EXPORT_SYMBOL(qpnp_pon_is_warm_reset);
 
 /**
+ * qpnp_pon_wd_config - Disable the wd in a warm reset.
+ * @enable: to enable or disable the PON watch dog
+ *
+ * Returns = 0 for operate successfully, < 0 for errors
+ */
+int qpnp_pon_wd_config(bool enable)
+{
+	struct qpnp_pon *pon = sys_reset_dev;
+	int rc = 0;
+
+	if (!pon)
+		return -EPROBE_DEFER;
+
+	rc = qpnp_pon_masked_write(pon, QPNP_PON_WD_RST_S2_CTL2(pon->base),
+			QPNP_PON_WD_EN, enable ? QPNP_PON_WD_EN : 0);
+	if (rc)
+		dev_err(&pon->spmi->dev,
+				"Unable to write to addr=%x, rc(%d)\n",
+				QPNP_PON_WD_RST_S2_CTL2(pon->base), rc);
+
+	return rc;
+}
+EXPORT_SYMBOL(qpnp_pon_wd_config);
+
+
+/**
  * qpnp_pon_trigger_config - Configures (enable/disable) the PON trigger source
  * @pon_src: PON source to be configured
  * @enable: to enable or disable the PON trigger
@@ -380,11 +421,20 @@ static irqreturn_t qpnp_kpdpwr_irq(int irq, void *_pon)
 {
 	int rc;
 	struct qpnp_pon *pon = _pon;
+#ifdef CONFIG_HUAWEI_KERNEL
+	struct timeval tv_pwr;
+	struct tm tm_pwr;
+#endif
 
 	rc = qpnp_pon_input_dispatch(pon, PON_KPDPWR);
 	if (rc)
 		dev_err(&pon->spmi->dev, "Unable to send input event\n");
-
+#ifdef CONFIG_HUAWEI_KERNEL
+	do_gettimeofday(&tv_pwr);
+	time_to_tm(tv_pwr.tv_sec, 0, &tm_pwr);
+	pr_info("Exit %s : [%ld-%d-%d]%d:%d:%d:%ld\n",__func__,tm_pwr.tm_year + 1900,tm_pwr.tm_mon+1,
+						tm_pwr.tm_mday,tm_pwr.tm_hour,tm_pwr.tm_min,tm_pwr.tm_sec,tv_pwr.tv_usec%1000);
+#endif
 	return IRQ_HANDLED;
 }
 
@@ -404,8 +454,6 @@ static irqreturn_t qpnp_kpdpwr_bark_irq(int irq, void *_pon)
 #endif
 
 #ifdef CONFIG_HUAWEI_KERNEL
-    /*clear the hardware reset magic number reset */
-    clear_hw_reset();
 	/*print message to inform developer this is triggered by long press power key */
 	printk(KERN_ERR "long press power key have detected!\n");
 #endif
@@ -746,6 +794,8 @@ qpnp_pon_config_input(struct qpnp_pon *pon,  struct qpnp_pon_config *cfg)
 		pon->pon_input->phys = "qpnp_pon/input0";
 	}
 
+	/* don't send dummy release event when system resumes */
+	__set_bit(INPUT_PROP_NO_DUMMY_RELEASE, pon->pon_input->propbit);
 	input_set_capability(pon->pon_input, EV_KEY, cfg->key_code);
 
 	return 0;
@@ -757,6 +807,8 @@ static int __devinit qpnp_pon_config_init(struct qpnp_pon *pon)
 	struct device_node *pp = NULL;
 	struct qpnp_pon_config *cfg;
 	u8 pon_ver;
+	u8 pmic_type;
+	u8 revid_rev4;
 
 	/* Check if it is rev B */
 	rc = spmi_ext_register_readl(pon->spmi->ctrl, pon->spmi->sid,
@@ -839,6 +891,38 @@ static int __devinit qpnp_pon_config_init(struct qpnp_pon *pon)
 
 			cfg->use_bark = of_property_read_bool(pp,
 							"qcom,use-bark");
+
+			rc = spmi_ext_register_readl(pon->spmi->ctrl,
+					pon->spmi->sid, PMIC_VERSION_REG,
+						&pmic_type, 1);
+
+			if (rc) {
+				dev_err(&pon->spmi->dev,
+				"Unable to read PMIC type\n");
+				return rc;
+			}
+
+			if (pmic_type == PMIC_VER_8941) {
+
+				rc = spmi_ext_register_readl(pon->spmi->ctrl,
+					pon->spmi->sid, PMIC_VERSION_REV4_REG,
+							&revid_rev4, 1);
+
+				if (rc) {
+					dev_err(&pon->spmi->dev,
+					"Unable to read PMIC revision ID\n");
+					return rc;
+				}
+
+				/*PM8941 V3 does not have harware bug. Hence
+				bark is not required from PMIC versions 3.0*/
+				if (!(revid_rev4 == PMIC8941_V1_REV4 ||
+					revid_rev4 == PMIC8941_V2_REV4)) {
+					cfg->support_reset = false;
+					cfg->use_bark = false;
+				}
+			}
+
 			if (cfg->use_bark) {
 				cfg->bark_irq = spmi_get_irq_byname(pon->spmi,
 							NULL, "resin-bark");
@@ -1000,7 +1084,18 @@ static int __devinit qpnp_pon_config_init(struct qpnp_pon *pon)
 					"Unable to config pon reset\n");
 				goto unreg_input_dev;
 			}
+		} 
+		else if (0 != cfg->s2_cntl2_addr) {
+			/* disable S2 reset */
+			rc = qpnp_pon_masked_write(pon, cfg->s2_cntl2_addr,
+						QPNP_PON_S2_CNTL_EN, 0);
+			if (rc) {
+				dev_err(&pon->spmi->dev,
+					"Unable to disable S2 reset\n");
+				goto unreg_input_dev;
+			}
 		}
+
 		rc = qpnp_pon_request_irqs(pon, cfg);
 		if (rc) {
 			dev_err(&pon->spmi->dev, "Unable to request-irq's\n");
@@ -1117,6 +1212,8 @@ static int __devinit qpnp_pon_probe(struct spmi_device *spmi)
 	u32 delay = 0, s3_debounce = 0;
 	int rc, sys_reset, index;
 	u8 pon_sts = 0;
+	const char *s3_src;
+	u8 s3_src_reg;
 
 	pon = devm_kzalloc(&spmi->dev, sizeof(struct qpnp_pon),
 							GFP_KERNEL);
@@ -1221,6 +1318,32 @@ static int __devinit qpnp_pon_probe(struct spmi_device *spmi)
 		}
 	}
 
+	/* program s3 source */
+	s3_src = "kpdpwr-and-resin";
+	rc = of_property_read_string(pon->spmi->dev.of_node,
+				"qcom,s3-src", &s3_src);
+	if (rc && rc != -EINVAL) {
+		dev_err(&pon->spmi->dev, "Unable to read s3 timer\n");
+		return rc;
+	}
+
+	if (!strcmp(s3_src, "kpdpwr"))
+		s3_src_reg = QPNP_PON_S3_SRC_KPDPWR;
+	else if (!strcmp(s3_src, "resin"))
+		s3_src_reg = QPNP_PON_S3_SRC_RESIN;
+	else if (!strcmp(s3_src, "kpdpwr-or-resin"))
+		s3_src_reg = QPNP_PON_S3_SRC_KPDPWR_OR_RESIN;
+	else /* default combination */
+		s3_src_reg = QPNP_PON_S3_SRC_KPDPWR_AND_RESIN;
+
+	rc = qpnp_pon_masked_write(pon, QPNP_PON_S3_SRC(pon->base),
+			QPNP_PON_S3_SRC_MASK, s3_src_reg);
+	if (rc) {
+		dev_err(&spmi->dev,
+			"Unable to program s3 source\n");
+		return rc;
+	}
+
 	dev_set_drvdata(&spmi->dev, pon);
 
 	INIT_DELAYED_WORK(&pon->bark_work, bark_work_func);
@@ -1259,8 +1382,8 @@ static int qpnp_pon_remove(struct spmi_device *spmi)
 }
 
 static struct of_device_id spmi_match_table[] = {
-	{	.compatible = "qcom,qpnp-power-on",
-	}
+	{ .compatible = "qcom,qpnp-power-on", },
+	{}
 };
 
 static struct spmi_driver qpnp_pon_driver = {

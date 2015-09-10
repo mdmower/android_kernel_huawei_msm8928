@@ -86,18 +86,19 @@ struct of_device_id huawei_mdss_dsi_panel_match[] = {
 /* add dynamic log */
 u32 hw_get_board_id(void)
 {
+	int ret = 0;
 	struct device_node *root = NULL;
 	u32 board_id[2] = {0};
 
 	root = of_find_node_by_path("/");
-	of_property_read_u32_array(root, "qcom,msm-id", board_id, 2);
-
+	ret = of_property_read_u32_array(root, "qcom,msm-id", board_id, 2);
+	if(ret != 0)
+		LCD_LOG_ERR("%s: read board_id property fail\n",__func__);
 	LCD_LOG_INFO("%s: board id = %d\n",__func__,board_id[1]);
 
 	return board_id[1];
 
 }
-
 
 void setup_lcd_power(void)
 {
@@ -210,7 +211,10 @@ int hw_get_lcd_id(void)
 	if(pulldown_read != pullup_read)//float
 	{
 		id0 = BIT(1);
-		gpio_tlmm_config(GPIO_CFG(gpio_id0,0,GPIO_CFG_INPUT,GPIO_CFG_PULL_DOWN,GPIO_CFG_2MA),GPIO_CFG_ENABLE);
+		ret = gpio_tlmm_config(GPIO_CFG(gpio_id0,0,GPIO_CFG_INPUT,GPIO_CFG_PULL_DOWN,GPIO_CFG_2MA),GPIO_CFG_ENABLE);
+		if (ret) {
+			LCD_LOG_ERR("config id0 to pull down failed\n");
+		}
 	}
 	else//connect 
 	{
@@ -220,7 +224,10 @@ int hw_get_lcd_id(void)
 			case LCD_ID_PULL_DOWN:
 			case LCD_ID_PULL_UP:
 			default:
-				gpio_tlmm_config(GPIO_CFG(gpio_id0,0,GPIO_CFG_INPUT,GPIO_CFG_NO_PULL,GPIO_CFG_2MA),GPIO_CFG_ENABLE);
+				ret = gpio_tlmm_config(GPIO_CFG(gpio_id0,0,GPIO_CFG_INPUT,GPIO_CFG_NO_PULL,GPIO_CFG_2MA),GPIO_CFG_ENABLE);
+				if (ret) {
+					LCD_LOG_ERR("config id0 to no pull failed\n");
+				}
 				break;
 		}
 
@@ -246,7 +253,10 @@ int hw_get_lcd_id(void)
 	if(pulldown_read != pullup_read)//float
 	{
 		id1 = BIT(1);
-		gpio_tlmm_config(GPIO_CFG(gpio_id1,0,GPIO_CFG_INPUT,GPIO_CFG_PULL_DOWN,GPIO_CFG_2MA),GPIO_CFG_ENABLE);
+		ret = gpio_tlmm_config(GPIO_CFG(gpio_id1,0,GPIO_CFG_INPUT,GPIO_CFG_PULL_DOWN,GPIO_CFG_2MA),GPIO_CFG_ENABLE);
+		if (ret) {
+			LCD_LOG_ERR("config id1 to pull down failed\n");
+		}
 	}
 	else//connect
 	{
@@ -256,7 +266,10 @@ int hw_get_lcd_id(void)
 			case LCD_ID_PULL_DOWN:
 			case LCD_ID_PULL_UP:
 			default:
-				gpio_tlmm_config(GPIO_CFG(gpio_id1,0,GPIO_CFG_INPUT,GPIO_CFG_NO_PULL,GPIO_CFG_2MA),GPIO_CFG_ENABLE);
+				ret = gpio_tlmm_config(GPIO_CFG(gpio_id1,0,GPIO_CFG_INPUT,GPIO_CFG_NO_PULL,GPIO_CFG_2MA),GPIO_CFG_ENABLE);
+				if (ret) {
+					LCD_LOG_ERR("config id1 to no pull failed\n");
+				}
 				break;
 		}
 	}
@@ -337,7 +350,7 @@ static int is_mipi_input_legal(int op_type,int ic_reg, int cmd_type, int param_n
 		ret = -1;
 	}	
 	/* ic_reg must in [0x00, 0xff] */
-	if (!((unsigned int)ic_reg >= 0 && (unsigned int)ic_reg <= 0xff))
+	if (!((unsigned int)ic_reg <= 0xff))
 	{
 		ret = -1;
 	}
@@ -359,7 +372,6 @@ static int is_mipi_input_legal(int op_type,int ic_reg, int cmd_type, int param_n
 	}
 	return ret;
 }
-
 
 /**********************************************************************************
 *function:process read and write commands  for lcd reg debug

@@ -31,11 +31,6 @@ static int huawei_apanic_log_length = 0;
 static unsigned long hardware_reset_magic_number = 0;
 
 #define HUAWEI_APANIC_COMPAT_STR "huawei,huawei-mem-hole"
-void clear_hw_reset()
-{
-    __raw_writel(0, HW_RESET_LOG_MAGIC_NUM_ADDR);
-    mb();
-}
 
 static int huawei_apanic_handler(struct notifier_block *this,
 				  unsigned long event, void *ptr)

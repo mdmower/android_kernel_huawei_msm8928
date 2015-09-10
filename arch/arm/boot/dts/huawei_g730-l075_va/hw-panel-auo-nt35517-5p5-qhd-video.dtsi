@@ -45,7 +45,7 @@
 		qcom,mdss-dsi-color-order = "rgb_swap_rgb";
 		qcom,mdss-dsi-pixel-packing = "tight";
 		qcom,mdss-dsi-on-command = [39 01 00 00 00 00 06 F0 55 AA 52 08 00
-			39 01 00 00 00 00 04 B1 60 00 00
+			39 01 00 00 00 00 04 B1 68 00 00
 			39 01 00 00 00 00 02 B3 00
 			39 01 00 00 00 00 13 C8 01 02 45 45 45 45 45 45 45 45 45 45 45 45 45 45 45 45
 			39 01 00 00 00 00 02 BC 05
@@ -115,7 +115,7 @@
 		qcom,mdss-dsi-t-clk-post = <0x04>;
 		qcom,mdss-dsi-t-clk-pre = <0x1b>;
 		qcom,mdss-dsi-bl-min-level = <8>;
-		qcom,mdss-dsi-bl-max-level = <250>;
+		qcom,mdss-dsi-bl-max-level = <255>;
 		qcom,mdss-dsi-dma-trigger = "trigger_sw";
 		qcom,mdss-dsi-mdp-trigger = "none";
 		qcom,mdss-dsi-bl-pmic-control-type = "bl_ctrl_dcs";

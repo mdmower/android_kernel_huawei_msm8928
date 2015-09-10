@@ -2028,8 +2028,8 @@ static int _regulator_do_set_voltage(struct regulator_dev *rdev,
 int regulator_set_voltage(struct regulator *regulator, int min_uV, int max_uV)
 {
 	struct regulator_dev *rdev = regulator->rdev;
-	int prev_min_uV, prev_max_uV;
 	int ret = 0;
+	int old_min_uV, old_max_uV;
 
 	mutex_lock(&rdev->mutex);
 
@@ -2052,22 +2052,26 @@ int regulator_set_voltage(struct regulator *regulator, int min_uV, int max_uV)
 	if (ret < 0)
 		goto out;
 
-	prev_min_uV = regulator->min_uV;
-	prev_max_uV = regulator->max_uV;
-
+	/* restore original values in case of error */
+	old_min_uV = regulator->min_uV;
+	old_max_uV = regulator->max_uV;
 	regulator->min_uV = min_uV;
 	regulator->max_uV = max_uV;
 
 	ret = regulator_check_consumers(rdev, &min_uV, &max_uV);
-	if (ret < 0) {
-		regulator->min_uV = prev_min_uV;
-		regulator->max_uV = prev_max_uV;
-		goto out;
-	}
+	if (ret < 0)
+		goto out2;
 
 	ret = _regulator_do_set_voltage(rdev, min_uV, max_uV);
+	if (ret < 0)
+		goto out2;
 
 out:
+	mutex_unlock(&rdev->mutex);
+	return ret;
+out2:
+	regulator->min_uV = old_min_uV;
+	regulator->max_uV = old_max_uV;
 	mutex_unlock(&rdev->mutex);
 	return ret;
 }
@@ -3164,74 +3168,6 @@ static const struct file_operations reg_consumers_fops = {
 	.llseek		= seq_lseek,
 	.release	= single_release,
 };
-
-#ifdef CONFIG_HUAWEI_KERNEL
-#define  STR_PAD	3
-#define  MAX_LEN    80
-
-static int regulator_check_str(struct regulator *reg,
-	   unsigned int *slen, char *snames)
-{
-	if (reg->enabled && reg->supply_name) {
-		if (*slen + strlen(reg->supply_name) + STR_PAD > MAX_LEN)
-			return -ENOMEM;
-		*slen += snprintf(snames + *slen,
-				strlen(reg->supply_name) + STR_PAD,
-				", %s", reg->supply_name);
-	}
-	return 0;
-}
-
-static void showall_enabled(void)
-{
-	struct regulator_dev *rdev;
-	unsigned int cnt = 0;
-
-	unsigned int slen;
-	struct regulator *reg;
-	char snames[80];
-
-	pr_info("Enabled regulators:\n");
-	mutex_lock(&regulator_list_mutex);
-	list_for_each_entry(rdev, &regulator_list, list) {
-		mutex_lock(&rdev->mutex);
-		if (_regulator_is_enabled(rdev)) {
-			slen = 0;
-			list_for_each_entry(reg,
-					&rdev->consumer_list, list) {
-				if (regulator_check_str(reg,
-							&slen, snames))
-					break;
-			}
-
-			if (rdev->desc->ops) {
-				printk(KERN_INFO "\t%s, %d uV%s\n",
-						rdev_get_name(rdev),
-						_regulator_get_voltage(rdev),
-						slen ? snames : ", null");
-            }
-			else {
-				printk(KERN_INFO "\t%s\n", rdev_get_name(rdev));
-            }
-			cnt++;
-		}
-		mutex_unlock(&rdev->mutex);
-	}
-	mutex_unlock(&regulator_list_mutex);
-
-	if (cnt) {
-		pr_info("Enabled regulator count: %d\n", cnt);
-    }
-	else {
-		pr_info("No regulators enabled.");
-    }
-}
-
-void regulator_debug_print_enabled(void)
-{
-	showall_enabled();
-}
-#endif
 
 static void rdev_init_debugfs(struct regulator_dev *rdev)
 {

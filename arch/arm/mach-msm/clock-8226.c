@@ -1,4 +1,4 @@
-/* Copyright (c) 2013, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2013-2014, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -1555,6 +1555,8 @@ static struct branch_clk gcc_usb_hsic_system_clk = {
 	},
 };
 
+static DEFINE_CLK_MEASURE(wcnss_m_clk);
+
 #ifdef CONFIG_DEBUG_FS
 struct measure_mux_entry {
 	struct clk *c;
@@ -1610,6 +1612,7 @@ static struct measure_mux_entry measure_mux_GCC[] = {
 	{ &pnoc_clk.c, GCC_BASE, 0x010},
 	{ &snoc_clk.c, GCC_BASE, 0x000},
 	{ &cnoc_clk.c, GCC_BASE, 0x008},
+	{ &wcnss_m_clk, GCC_BASE, 0x0198},
 	/*
 	 * measure the gcc_bimc_kpss_axi_clk instead to account for the DDR
 	 * rate being gcc_bimc_clk/2.
@@ -2580,17 +2583,6 @@ static struct branch_clk mmss_misc_ahb_clk = {
 	},
 };
 
-static struct branch_clk mmss_mmssnoc_bto_ahb_clk = {
-	.cbcr_reg = MMSS_MMSSNOC_BTO_AHB_CBCR,
-	.has_sibling = 1,
-	.base = &virt_bases[MMSS_BASE],
-	.c = {
-		.dbg_name = "mmss_mmssnoc_bto_ahb_clk",
-		.ops = &clk_ops_branch,
-		CLK_INIT(mmss_mmssnoc_bto_ahb_clk.c),
-	},
-};
-
 static struct branch_clk mmss_mmssnoc_axi_clk = {
 	.cbcr_reg = MMSS_MMSSNOC_AXI_CBCR,
 	.has_sibling = 1,
@@ -2692,7 +2684,6 @@ static struct branch_clk venus0_vcodec0_clk = {
 
 #ifdef CONFIG_DEBUG_FS
 static struct measure_mux_entry measure_mux_MMSS[] = {
-	{ &mmss_mmssnoc_bto_ahb_clk.c,  MMSS_BASE, 0x0002 },
 	{ &mmss_misc_ahb_clk.c,  MMSS_BASE, 0x0003 },
 	{ &mmss_mmssnoc_axi_clk.c,  MMSS_BASE, 0x0004 },
 	{ &mmss_s0_axi_clk.c,  MMSS_BASE, 0x0005 },
@@ -2843,6 +2834,8 @@ static struct pll_freq_tbl apcs_pll_freq[] = {
 	F_APCS_PLL(1401600000, 73, 0x0, 0x1, 0x0, 0x0, 0x0),
 	F_APCS_PLL(1497600000, 78, 0x0, 0x1, 0x0, 0x0, 0x0),
 	F_APCS_PLL(1593600000, 83, 0x0, 0x1, 0x0, 0x0, 0x0),
+	F_APCS_PLL(1689600000, 88, 0x0, 0x1, 0x0, 0x0, 0x0),
+	F_APCS_PLL(1785600000, 93, 0x0, 0x1, 0x0, 0x0, 0x0),
 	PLL_F_END
 };
 
@@ -3134,6 +3127,10 @@ static struct clk_lookup msm_clocks_8226[] = {
 	CLK_LOOKUP("apc3_m_clk", apc3_m_clk, ""),
 	CLK_LOOKUP("l2_m_clk", l2_m_clk, ""),
 
+	/* Measure clocks for WCNSS */
+	CLK_LOOKUP("measure",   measure_clk.c, "fb000000.qcom,wcnss-wlan"),
+	CLK_LOOKUP("wcnss_debug", wcnss_m_clk, "fb000000.qcom,wcnss-wlan"),
+
 	/* LPM Resources */
 	CLK_LOOKUP("xo",          cxo_lpm_clk.c, "fc4281d0.qcom,mpm"),
 
@@ -3150,8 +3147,10 @@ static struct clk_lookup msm_clocks_8226[] = {
 	CLK_LOOKUP("iface_clk",   gcc_mss_cfg_ahb_clk.c, "fc880000.qcom,mss"),
 	CLK_LOOKUP("mem_clk",    gcc_boot_rom_ahb_clk.c, "fc880000.qcom,mss"),
 	/* NFC */
+	/* fix clk not output sometimes when phone is sleep */
 	//CLK_LOOKUP("ref_clk",            cxo_d1_pin.c, "2-000e"),
-    CLK_LOOKUP("nfc_bbclk2",           cxo_d1_pin.c,   "2-0077"), 
+    CLK_LOOKUP("nfc_bbclk2",            cxo_d1_pin.c,   "2-0077"), 
+    CLK_LOOKUP("nfc_pn547clk",            cxo_d1_pin.c,   "2-0028"),
 	
 	/* PIL-PRONTO */
 	CLK_LOOKUP("xo", cxo_pil_pronto_clk.c, "fb21b000.qcom,pronto"),
@@ -3167,6 +3166,8 @@ static struct clk_lookup msm_clocks_8226[] = {
 	CLK_LOOKUP("xo",     xo_a_clk.c, "f9011050.qcom,acpuclk"),
 	CLK_LOOKUP("gpll0",  gpll0_ao.c, "f9011050.qcom,acpuclk"),
 	CLK_LOOKUP("a7sspll", a7sspll.c, "f9011050.qcom,acpuclk"),
+	CLK_LOOKUP("clk-4",  gpll0_ao.c, "f9011050.qcom,clock-a7"),
+	CLK_LOOKUP("clk-5", a7sspll.c, "f9011050.qcom,clock-a7"),
 	CLK_LOOKUP("kpss_ahb", kpss_ahb_clk_src.c, ""),
 
 	/* WCNSS CLOCKS */
@@ -3298,10 +3299,6 @@ static struct clk_lookup msm_clocks_8226[] = {
 	CLK_LOOKUP("iface_clk",       gcc_blsp1_ahb_clk.c, "f995e000.serial"),
 	CLK_LOOKUP("core_clk", gcc_blsp1_uart2_apps_clk.c, "f995e000.serial"),
 
-	/*BLSP1 UART6 Clocks */
-	CLK_LOOKUP("iface_clk",       gcc_blsp1_ahb_clk.c, "f9922000.uart"),
-	CLK_LOOKUP("core_clk", gcc_blsp1_uart6_apps_clk.c, "f9922000.uart"),
-
 	CLK_LOOKUP("iface_clk",          gcc_blsp1_ahb_clk.c, "f9923000.spi"),
 	CLK_LOOKUP("core_clk", gcc_blsp1_qup1_spi_apps_clk.c, "f9923000.spi"),
 
@@ -3366,6 +3363,7 @@ static struct clk_lookup msm_clocks_8226[] = {
 	CLK_LOOKUP("core_clk", gcc_blsp1_uart1_apps_clk.c, ""),
 	CLK_LOOKUP("core_clk", gcc_blsp1_uart4_apps_clk.c, ""),
 	CLK_LOOKUP("core_clk", gcc_blsp1_uart5_apps_clk.c, ""),
+	CLK_LOOKUP("core_clk", gcc_blsp1_uart6_apps_clk.c, ""),
 	CLK_LOOKUP("core_clk", gcc_pdm2_clk.c, ""),
 	CLK_LOOKUP("iface_clk", gcc_pdm_ahb_clk.c, ""),
 	CLK_LOOKUP("iface_clk", gcc_prng_ahb_clk.c, ""),
@@ -3422,6 +3420,10 @@ static struct clk_lookup msm_clocks_8226[] = {
 	CLK_LOOKUP("cam_clk", camss_mclk0_clk.c, "6a.qcom,camera"),
 	CLK_LOOKUP("cam_clk", camss_mclk0_clk.c, "6c.qcom,camera"),
 	CLK_LOOKUP("cam_clk", camss_mclk0_clk.c, "20.qcom,camera"),
+	CLK_LOOKUP("cam_src_clk", mclk0_clk_src.c, "0.qcom,camera"),
+	CLK_LOOKUP("cam_src_clk", mclk0_clk_src.c, "1.qcom,camera"),
+	CLK_LOOKUP("cam_clk", camss_mclk0_clk.c, "0.qcom,camera"),
+	CLK_LOOKUP("cam_clk", camss_mclk0_clk.c, "1.qcom,camera"),
 
 	/* eeprom clocks */
 	CLK_LOOKUP("cam_src_clk", mclk0_clk_src.c, "6c.qcom,eeprom"),
@@ -3450,6 +3452,9 @@ static struct clk_lookup msm_clocks_8226[] = {
     CLK_LOOKUP("cam_clk", camss_mclk0_clk.c, "6e.qcom,camera"),
     CLK_LOOKUP("cam_src_clk", mclk0_clk_src.c, "7e.qcom,camera"),
     CLK_LOOKUP("cam_clk", camss_mclk0_clk.c, "7e.qcom,camera"),
+    CLK_LOOKUP("cam_src_clk", mclk0_clk_src.c, "34.qcom,camera"),//imx214
+    CLK_LOOKUP("cam_clk", camss_mclk0_clk.c, "34.qcom,camera"),//imx214
+
 #endif
 
 	/* CCI clocks */
@@ -3592,7 +3597,6 @@ static struct clk_lookup msm_clocks_8226[] = {
 	CLK_LOOKUP("cam_gp1_clk", camss_gp1_clk.c, ""),
 	CLK_LOOKUP("iface_clk", camss_micro_ahb_clk.c, ""),
 
-	CLK_LOOKUP("", mmss_mmssnoc_bto_ahb_clk.c, ""),
 	CLK_LOOKUP("", mmss_mmssnoc_axi_clk.c, ""),
 	CLK_LOOKUP("", mmss_s0_axi_clk.c, ""),
 

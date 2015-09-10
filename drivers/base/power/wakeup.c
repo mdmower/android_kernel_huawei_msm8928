@@ -919,7 +919,8 @@ static int print_active_wakeup_source(struct seq_file *m,
 	unsigned long active_count;
 	ktime_t active_time;
 	ktime_t prevent_sleep_time;
-	int ret;
+    /* clear coverity */
+    int ret = 0;
 
 	spin_lock_irqsave(&ws->lock, flags);
 

@@ -1,4 +1,4 @@
-/* Copyright (c) 2010-2013, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2010-2014, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -38,8 +38,6 @@
 
 /* Support for first 5 EDID blocks */
 #define MAX_EDID_BLOCK_SIZE (0x80 * 5)
-
-#define BUFF_SIZE_3D 128
 
 enum data_block_types {
 	RESERVED,
@@ -1116,13 +1114,118 @@ static void hdmi_edid_get_extended_video_formats(
 	}
 } /* hdmi_edid_get_extended_video_formats */
 
+static void hdmi_edid_parse_et3(struct hdmi_edid_ctrl *edid_ctrl,
+	const u8 *edid_blk0)
+{
+	u8  start = DTD_OFFSET, i = 0;
+	struct hdmi_edid_sink_data *sink_data = NULL;
+
+	if (!edid_ctrl || !edid_blk0) {
+		DEV_ERR("%s: invalid input\n", __func__);
+		return;
+	}
+
+	sink_data = &edid_ctrl->sink_data;
+
+	/* check if the EDID revision is 4 (version 1.4) */
+	if (edid_blk0[REVISION_OFFSET] != EDID_REVISION_FOUR)
+		return;
+
+	/* Check each of 4 - 18 bytes descriptors */
+	while (i < DTD_MAX) {
+		u8  iter = start;
+		u32 header_1 = 0;
+		u8  header_2 = 0;
+
+		header_1 = edid_blk0[iter++];
+		header_1 = header_1 << 8 | edid_blk0[iter++];
+		header_1 = header_1 << 8 | edid_blk0[iter++];
+		header_1 = header_1 << 8 | edid_blk0[iter++];
+		header_2 = edid_blk0[iter];
+
+		if (header_1 != 0x000000F7 || header_2 != 0x00)
+			goto loop_end;
+
+		/* VESA DMT Standard Version (0x0A)*/
+		iter++;
+
+		/* First set of supported formats */
+		iter++;
+		if (edid_blk0[iter] & BIT(3)) {
+			pr_debug("%s: DMT 848x480@60\n", __func__);
+			hdmi_edid_add_sink_video_format(sink_data,
+				HDMI_VFRMT_848x480p60_16_9);
+		}
+
+		/* Second set of supported formats */
+		iter++;
+		if (edid_blk0[iter] & BIT(1)) {
+			pr_debug("%s: DMT 1280x1024@60\n", __func__);
+			hdmi_edid_add_sink_video_format(sink_data,
+				HDMI_VFRMT_1280x1024p60_5_4);
+		}
+
+		if (edid_blk0[iter] & BIT(3)) {
+			pr_debug("%s: DMT 1280x960@60\n", __func__);
+			hdmi_edid_add_sink_video_format(sink_data,
+				HDMI_VFRMT_1280x960p60_4_3);
+		}
+
+		/* Third set of supported formats */
+		iter++;
+		if (edid_blk0[iter] & BIT(1)) {
+			pr_debug("%s: DMT 1400x1050@60\n", __func__);
+			hdmi_edid_add_sink_video_format(sink_data,
+				HDMI_VFRMT_1400x1050p60_4_3);
+		}
+
+		if (edid_blk0[iter] & BIT(5)) {
+			pr_debug("%s: DMT 1440x900@60\n", __func__);
+			hdmi_edid_add_sink_video_format(sink_data,
+				HDMI_VFRMT_1440x900p60_16_10);
+		}
+
+		if (edid_blk0[iter] & BIT(7)) {
+			pr_debug("%s: DMT 1360x768@60\n", __func__);
+			hdmi_edid_add_sink_video_format(sink_data,
+				HDMI_VFRMT_1360x768p60_16_9);
+		}
+
+		/* Fourth set of supported formats */
+		iter++;
+		if (edid_blk0[iter] & BIT(2)) {
+			pr_debug("%s: DMT 1600x1200@60\n", __func__);
+			hdmi_edid_add_sink_video_format(sink_data,
+				HDMI_VFRMT_1600x1200p60_4_3);
+		}
+
+		if (edid_blk0[iter] & BIT(5)) {
+			pr_debug("%s: DMT 1680x1050@60\n", __func__);
+			hdmi_edid_add_sink_video_format(sink_data,
+				HDMI_VFRMT_1680x1050p60_16_10);
+		}
+
+		/* Fifth set of supported formats */
+		iter++;
+		if (edid_blk0[iter] & BIT(0)) {
+			pr_debug("%s: DMT 1920x1200@60\n", __func__);
+			hdmi_edid_add_sink_video_format(sink_data,
+				HDMI_VFRMT_1920x1200p60_16_10);
+		}
+
+loop_end:
+		i++;
+		start += DTD_SIZE;
+	}
+}
+
 static void hdmi_edid_get_display_mode(struct hdmi_edid_ctrl *edid_ctrl,
 	const u8 *data_buf, u32 num_of_cea_blocks)
 {
 	u8 i = 0, offset = 0, std_blk = 0;
 	u32 video_format = HDMI_VFRMT_640x480p60_4_3;
 	u32 has480p = false;
-	u8 len;
+	u8 len = 0;
 	int rc;
 	const u8 *edid_blk0 = NULL;
 	const u8 *edid_blk1 = NULL;
@@ -1142,7 +1245,7 @@ static void hdmi_edid_get_display_mode(struct hdmi_edid_ctrl *edid_ctrl,
 		hdmi_edid_find_block(data_buf+0x80, DBC_START_OFFSET,
 			VIDEO_DATA_BLOCK, &len) : NULL;
 
-	if (svd == NULL || len == 0 || len > MAX_DATA_BLOCK_SIZE) {
+	if (num_of_cea_blocks && (len == 0 || len > MAX_DATA_BLOCK_SIZE)) {
 		DEV_DBG("%s: No/Invalid Video Data Block\n",
 			__func__);
 		return;
@@ -1350,6 +1453,9 @@ static void hdmi_edid_get_display_mode(struct hdmi_edid_ctrl *edid_ctrl,
 		hdmi_edid_add_sink_video_format(sink_data,
 				HDMI_VFRMT_1024x768p60_4_3);
 	}
+
+	/* Established Timing III */
+	hdmi_edid_parse_et3(edid_ctrl, data_buf);
 
 	hdmi_edid_get_extended_video_formats(edid_ctrl, data_buf+0x80);
 

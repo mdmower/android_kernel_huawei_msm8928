@@ -41,10 +41,8 @@ struct tag_switch_count {
 	pid_t p_pid;
 	unsigned long last_swithc_count;
 };
-/* "-blacklist mode-: " has the same size  */
-#define APX_LENGTH sizeof("-whitelist mode-: ")
 
-static char p_name[TASK_COMM_LEN*NAME_NUM + APX_LENGTH] = {0};
+static char p_name[TASK_COMM_LEN*NAME_NUM] = {0};
 /* storage proccess list in hung task mechanism */
 struct name_table {
 	char name[TASK_COMM_LEN];
@@ -482,12 +480,17 @@ static int rebuild_name_table(char *pname, int pname_len)
 		 * pointer [curr] not an end symbol indicates
 		 * that the after [NAME_NUM] proccess,
 		 * the [NAME_NUM + 1]th proccess was found
-		 * Ignore the redundant names.
 		 */
-		if (NAME_NUM - 1 == count) {
-			pr_err("more than 15 names,ignore redundant.\n");
+		if (NAME_NUM == count && '\0' != *curr)
+			goto err_proc_num;
+
+		/* if the user input [NAME_NUM] proccess name,
+		 * but just end his input by a space or comma,
+		 * we just jump out the loop
+		 */
+		if (NAME_NUM == count)
 			break;
-		}
+
 		/* the [count]th name should be storage in corresponding
 		 * item in table, and [proc_name_len] is set to count
 		 * the length of process name
@@ -523,9 +526,10 @@ static int rebuild_name_table(char *pname, int pname_len)
 				pr_err("hung_task:set to blacklist.\n");
 				continue;
 			} else {
+				whitelist = NOT_DEFINE;
+				goto err_proc_name;
 				pr_err("hung_task: add whitelist or blacklist");
 				pr_err("before process name.\n");
-				goto err_proc_name;
 			}
 		}
 		pr_err("\nhung_task: name_table: %d, %s,name_len: %d\n",
@@ -549,11 +553,16 @@ static int rebuild_name_table(char *pname, int pname_len)
 err_proc_name:
 	memset(p_name_table, 0x00, sizeof(p_name_table));
 	memset(p_name, 0x00, sizeof(p_name));
-	whitelist = NOT_DEFINE;
 	pr_err("hung_task: rebuild_name_table: Error: process name");
 	pr_err(" is invallid, set monitor_list failed.\n");
 
 	return 0;
+
+err_proc_num:
+	/* more than 16 processes,remove it */
+	pr_err("hung_task: rebuild_name_table: Warnig: too many ");
+	pr_err("processess, leave it and do nothing.\n");
+	return count;
 }
 
 /* since the proccess name written into [pname_table]
@@ -619,14 +628,17 @@ static int hwht_monitor_write(struct file *rfile,
 	char tmp[TASK_COMM_LEN*NAME_NUM] = {0};
 
 	/* reset p_name to NULL */
-	whitelist = NOT_DEFINE;
 	memset(p_name, 0x00, sizeof(p_name));
-	memset(p_name_table, 0x00, sizeof(p_name_table));
-	/*make sure count >= 1, although count will never smaller than 1*/
-	if ((count < 2) || (count > sizeof(tmp) - 1)) {
-		pr_err("hung_task: input string is too long or too short\n");
+
+	if (count < 2) {
+		memset(p_name_table, 0x00, sizeof(p_name_table));
+		pr_err("hung_task: input string null.\n");
+	}
+	if (count > (sizeof(tmp) - 1)) {
+		pr_err("hung_task: input string is too long\n");
 		return -EINVAL;
 	}
+
 	if (copy_from_user(tmp, buffer, count))
 		return -EFAULT;
 
@@ -661,11 +673,13 @@ static int hwht_enable_read(char *rpage, char **start,
 	char *buf = rpage;
 
 	len = 0;
+
 	if (hungtask_enable)
-		len = snprintf(buf, 4, "on\n");
+		len = snprintf(buf, strlen("on\n") + 1,  "on\n");
 	else
-		len = snprintf(buf, 4, "off\n");
+		len = snprintf(buf, strlen("off\n") + 1, "off\n");
 	buf += len;
+
 	len = buf - rpage;
 	if (len < off+count)
 		*eof = 1;

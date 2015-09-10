@@ -29,7 +29,7 @@ qcom,qrd-4v35-2300mAh-scud-data {
 	qcom,cool-bat-mv = <4350>;
 	qcom,ibatmax-cool-ma = <600>;
 
-	qcom,hot-bat-decidegc = <520>;
+	qcom,hot-bat-decidegc = <580>;
 	qcom,cold-bat-decidegc = <0>;
 
 	qcom,rbatt-sf-lut {
@@ -121,4 +121,3 @@ qcom,qrd-4v35-2300mAh-scud-data {
 				<3400 3400 3400 3400 3400>;
 	};
 };
-

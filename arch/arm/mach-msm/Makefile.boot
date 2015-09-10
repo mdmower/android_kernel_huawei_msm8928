@@ -69,6 +69,7 @@ endif
         dtb-$(CONFIG_ARCH_MSM8974)	+= msm8974-v2.2-mtp.dtb
         dtb-$(CONFIG_ARCH_MSM8974)	+= msm8974pro-ab-pm8941-cdp.dtb
         dtb-$(CONFIG_ARCH_MSM8974)	+= msm8974pro-ab-pm8941-fluid.dtb
+        dtb-$(CONFIG_ARCH_MSM8974)	+= msm8974pro-ab-pm8941-fluid-hbtp.dtb
         dtb-$(CONFIG_ARCH_MSM8974)	+= msm8974pro-ab-pm8941-liquid.dtb
         dtb-$(CONFIG_ARCH_MSM8974)	+= msm8974pro-ab-pm8941-mtp.dtb
         dtb-$(CONFIG_ARCH_MSM8974)	+= msm8974pro-ac-pm8941-cdp.dtb
@@ -112,13 +113,22 @@ endif
 #	dtb-$(CONFIG_ARCH_MSM8226)	+= msm8226-v2-1080p-mtp.dtb
 #	dtb-$(CONFIG_ARCH_MSM8226)	+= msm8226-v2-qrd-evt.dtb
 #	dtb-$(CONFIG_ARCH_MSM8226)	+= msm8226-v2-qrd-dvt.dtb
-#	dtb-$(CONFIG_ARCH_MSM8226)	+= msm8926-720p-cdp.dtb
-#	dtb-$(CONFIG_ARCH_MSM8226)	+= msm8926-1080p-cdp.dtb
-#	dtb-$(CONFIG_ARCH_MSM8226)	+= msm8926-720p-mtp.dtb
-#	dtb-$(CONFIG_ARCH_MSM8226)	+= msm8926-1080p-mtp.dtb
-#	dtb-$(CONFIG_ARCH_MSM8226)	+= msm8926-qrd.dtb
-#	dtb-$(CONFIG_ARCH_MSM8226)	+= msm8926-qrd-skug.dtb
-#	dtb-$(CONFIG_ARCH_MSM8226)	+= msm8926-qrd-skug-pvt.dtb
+#	dtb-$(CONFIG_ARCH_MSM8226)	+= msm8926-v1-720p-cdp.dtb
+#	dtb-$(CONFIG_ARCH_MSM8226)	+= msm8926-v1-1080p-cdp.dtb
+#	dtb-$(CONFIG_ARCH_MSM8226)	+= msm8926-v1-720p-mtp.dtb
+#	dtb-$(CONFIG_ARCH_MSM8226)	+= msm8926-v1-1080p-mtp.dtb
+#	dtb-$(CONFIG_ARCH_MSM8226)	+= msm8926-v1-qrd.dtb
+#	dtb-$(CONFIG_ARCH_MSM8226)	+= msm8926-v1-qrd-skug.dtb
+#	dtb-$(CONFIG_ARCH_MSM8226)	+= msm8926-v1-qrd-skug-pvt.dtb
+#	dtb-$(CONFIG_ARCH_MSM8226)	+= msm8926-v2-720p-cdp.dtb
+#	dtb-$(CONFIG_ARCH_MSM8226)	+= msm8926-v2-1080p-cdp.dtb
+#	dtb-$(CONFIG_ARCH_MSM8226)	+= msm8926-v2-1080p-ext-buck-cdp.dtb
+#	dtb-$(CONFIG_ARCH_MSM8226)	+= msm8926-v2-720p-mtp.dtb
+#	dtb-$(CONFIG_ARCH_MSM8226)	+= msm8926-v2-1080p-mtp.dtb
+#	dtb-$(CONFIG_ARCH_MSM8226)	+= msm8926-v2-1080p-ext-buck-mtp.dtb
+#	dtb-$(CONFIG_ARCH_MSM8226)	+= msm8926-v2-qrd.dtb
+#	dtb-$(CONFIG_ARCH_MSM8226)	+= msm8926-v2-qrd-skug.dtb
+#	dtb-$(CONFIG_ARCH_MSM8226)	+= msm8926-v2-qrd-skug-pvt.dtb
 #	dtb-$(CONFIG_ARCH_MSM8226)	+= msm8226-v1-qrd-skuf.dtb
 #	dtb-$(CONFIG_ARCH_MSM8226)	+= msm8226-v2-qrd-skuf.dtb
 #	dtb-$(CONFIG_ARCH_MSM8226)	+= apq8026-v1-xpm.dtb
@@ -142,7 +152,8 @@ endif
         dtb-$(CONFIG_ARCH_MSM8226)	+= msm8926-g620cl-va.dtb
         dtb-$(CONFIG_ARCH_MSM8226)	+= msm8926-g620ul-va.dtb
         dtb-$(CONFIG_ARCH_MSM8226)	+= msm8926-g535_l11-va.dtb
-
+#/* G6-L11 After merge the partition table Boot image size increased */
+ifeq ($(EMMC_KEEP_G6_PARTITION),FALSE)
         dtb-$(CONFIG_ARCH_MSM8226)	+= msm8926-g660tl-va.dtb
         dtb-$(CONFIG_ARCH_MSM8226)	+= msm8926-g660cl-va.dtb
         dtb-$(CONFIG_ARCH_MSM8226)	+= msm8926-g660ul-va.dtb
@@ -152,11 +163,15 @@ endif
         dtb-$(CONFIG_ARCH_MSM8226)	+= msm8926-g620ul-vb.dtb
 
         dtb-$(CONFIG_ARCH_MSM8226)	+= msm8926-g660-l075-va.dtb
-        dtb-$(CONFIG_ARCH_MSM8226)	+= msm8926-mate2-vb.dtb
         dtb-$(CONFIG_ARCH_MSM8226)	+= msm8926-g730-l072-va.dtb
         dtb-$(CONFIG_ARCH_MSM8226)	+= msm8926-g730-l073-va.dtb
         dtb-$(CONFIG_ARCH_MSM8226)	+= msm8926-g730-l075-va.dtb
+endif
         dtb-$(CONFIG_ARCH_MSM8226)	+= msm8926-g660-l075-vb.dtb
+        dtb-$(CONFIG_ARCH_MSM8226)	+= msm8926-g760-l071-va.dtb
+        dtb-$(CONFIG_ARCH_MSM8226)	+= msm8926-g760-l071-vb.dtb
+        dtb-$(CONFIG_ARCH_MSM8226)	+= msm8926-mate2-vb.dtb
+        dtb-$(CONFIG_ARCH_MSM8226)	+= msm8926-mate2-vc.dtb
 # FSM9XXX
    zreladdr-$(CONFIG_ARCH_FSM9XXX)	:= 0x10008000
 params_phys-$(CONFIG_ARCH_FSM9XXX)	:= 0x10000100

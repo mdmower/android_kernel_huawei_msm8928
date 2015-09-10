@@ -32,7 +32,8 @@
 
 				/* CY_CORE_EWG_TAP_TAP | CY_CORE_EWG_TWO_FINGER_SLIDE */
 				cy,easy_wakeup_gesture = <0x0>;
-				cy,btn_keys = <102 /* KEY_HOME */
+				/* KEY_HOMEPAGE instead of KEY_HOME(102) */
+				cy,btn_keys = <172 /* KEY_HOME */
 						139 /* KEY_MENU */
 						158 /* KEY_BACK */
 						217 /* KEY_SEARCH */
@@ -41,7 +42,7 @@
 						212 /* KEY_CAMERA */
 						116>; /* KEY_POWER */
 				cy,btn_keys-tag = <0>;
-				cy,tp_ic_version = "TMD445";/*ic version*/
+				cy,tp_ic_version = "TMA445";/*ic version*/
 
 				/* tp capacitance infomation */
 				cy,min_mut_cap = "-200"; /*minimum mutual capcitance*/

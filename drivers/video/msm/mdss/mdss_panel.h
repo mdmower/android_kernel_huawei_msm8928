@@ -24,9 +24,6 @@ struct panel_id {
 	u16 type;
 };
 
-#ifdef CONFIG_HUAWEI_KERNEL
-#define LOW_FRAME_RATE	30
-#endif
 #define DEFAULT_FRAME_RATE	60
 #define MDSS_DSI_RST_SEQ_LEN	10
 
@@ -177,9 +174,6 @@ struct mdss_dsi_phy_ctrl {
 	char bistctrl[6];
 	uint32_t pll[21];
 	char lanecfg[45];
-#ifdef CONFIG_HUAWEI_KERNEL
-	uint32_t timing_30_fps[12];
-#endif
 };
 
 struct mipi_panel_info {
@@ -234,9 +228,14 @@ struct mipi_panel_info {
 	u32  init_delay;
 };
 
+struct edp_panel_info {
+	char frame_rate;	/* fps */
+};
+
 enum dynamic_fps_update {
 	DFPS_SUSPEND_RESUME_MODE,
 	DFPS_IMMEDIATE_CLK_UPDATE_MODE,
+	DFPS_IMMEDIATE_PORCH_UPDATE_MODE,
 };
 
 enum lvds_mode {
@@ -270,17 +269,6 @@ struct fbc_panel_info {
 	u32 lossy_mode_idx;
 };
 
-struct mdss_mdp_pp_tear_check {
-	u32 tear_check_en;
-	u32 sync_cfg_height;
-	u32 vsync_init_val;
-	u32 sync_threshold_start;
-	u32 sync_threshold_continue;
-	u32 start_pos;
-	u32 rd_ptr_irq;
-	u32 refx100;
-};
-
 struct mdss_panel_info {
 	u32 xres;
 	u32 yres;
@@ -290,6 +278,7 @@ struct mdss_panel_info {
 	u32 type;
 	u32 wait_cycle;
 	u32 pdest;
+	u32 brightness_max;
 	u32 bl_max;
 	u32 bl_min;
 #ifdef CONFIG_HUAWEI_LCD
@@ -327,15 +316,14 @@ struct mdss_panel_info {
 	u32 inversion_mode;
 #endif
 	uint32_t panel_dead;
-	struct mdss_mdp_pp_tear_check te;
 
 	struct lcd_panel_info lcdc;
 	struct fbc_panel_info fbc;
 	struct mipi_panel_info mipi;
 	struct lvds_panel_info lvds;
-
-#ifdef CONFIG_HUAWEI_KERNEL
-	bool huawei_dynamic_fps;
+	struct edp_panel_info edp;
+#ifdef CONFIG_HUAWEI_LCD
+	u32 panel_read_flag;
 #endif
 };
 
@@ -386,12 +374,9 @@ static inline u32 mdss_panel_get_framerate(struct mdss_panel_info *panel_info)
 	case MIPI_VIDEO_PANEL:
 	case MIPI_CMD_PANEL:
 		frame_rate = panel_info->mipi.frame_rate;
-#ifdef CONFIG_HUAWEI_KERNEL
-		if(panel_info->huawei_dynamic_fps)
-		{
-	        frame_rate = DEFAULT_FRAME_RATE;
-		}
-#endif
+		break;
+	case EDP_PANEL:
+		frame_rate = panel_info->edp.frame_rate;
 		break;
 	case WRITEBACK_PANEL:
 		frame_rate = DEFAULT_FRAME_RATE;

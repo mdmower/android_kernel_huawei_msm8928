@@ -1,4 +1,4 @@
-/* Copyright (c) 2013, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2013-2014, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -90,11 +90,11 @@ static void check_dsi_ctrl_status(struct work_struct *work)
 		pr_err("%s: mdss_mdp_ctl not available\n", __func__);
 		return;
 	}
-	if (pdsi_status->mfd->shutdown_pending)
-	{
-		pr_err("%s: DSI turning off, avoiding BTA status check\n",__func__);
-		return;
-	}
+    if (pdsi_status->mfd->shutdown_pending)
+    {
+        pr_err("%s: DSI turning off, avoiding BTA status check\n",__func__);
+        return;
+    }
 	if(!pdsi_status->mfd->panel_power_on)
 	{
 		pr_err("%s:mipi dsi and panel have suspended!\n", __func__);
@@ -121,6 +121,15 @@ static void check_dsi_ctrl_status(struct work_struct *work)
 #else
 	mutex_lock(&mdp5_data->ov_lock);
 #endif
+	if (pdsi_status->mfd->shutdown_pending) {
+		mutex_unlock(&mdp5_data->ov_lock);
+		if (ctl->shared_lock)
+			mutex_unlock(ctl->shared_lock);
+		pr_err("%s: DSI turning off, avoiding BTA status check\n",
+							__func__);
+		return;
+	}
+
 	/*
 	 * For the command mode panels, we return pan display
 	 * IOCTL on vsync interrupt. So, after vsync interrupt comes

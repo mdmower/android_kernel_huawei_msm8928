@@ -161,6 +161,7 @@
 		qcom,sensor-position = <1>;
 		qcom,sensor-mode = <1>;
 		qcom,cci-master = <0>;
+		qcom,product-name = "g6";
 		status = "ok";
 	};
 
@@ -199,6 +200,7 @@
 		qcom,sensor-position = <1>;
 		qcom,sensor-mode = <1>;
 		qcom,cci-master = <0>;
+		qcom,product-name = "g6";
 		status = "ok";
 	};
 };

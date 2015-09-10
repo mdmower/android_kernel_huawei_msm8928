@@ -1,4 +1,4 @@
-/* Copyright (c) 2012-2013, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2014, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -25,23 +25,6 @@
 #include "mdss_panel.h"
 #include "mdss_dsi.h"
 #include "mdss_debug.h"
-#ifdef CONFIG_HUAWEI_KERNEL
-#include <linux/iopoll.h>  //for check FIFO status
-#define PHY_TIMING_SIZE 12           //the size of phy timing settings
-#define PHY_PARAMS_SIZE 4            // the size of every param of phy timing setting
-#define MDSS_DSI_0_PHY_DSIPHY_TIMING_CTRL_0 0x0440  //MIPI DSI timing setting address
-#define MDSS_DSI_0_FIFO_STATUS 0x000c      //FIFO status address
-#define MDSS_DSI_0_FIFO_EMPTY_STATUS 0x11111000  //empty status
-#define DSI_DSIPHY_PLL_CTRL_1 0x204
-#define DSI_DSIPHY_PLL_CTRL_3 0x228
-#define MDSS_FPS_WAIT_MS    10       //wait 10ms for redo the mipi settings
-#define MDSS_FPS_START_MS    0
-struct mutex mdss_fps_mutexlock;//mutex lock flag
-static struct workqueue_struct *mdp_dynamic_frame_rate_wq; //change fps workqueue
-static struct delayed_work mdp_dynamic_frame_rate_worker;//worker
-struct platform_device *mdss_local_pdev = NULL;//the dev ptr get throught find_device_by_node
-int mdss_change_fps_error_flag = false;  //true means FIFO not empty
-#endif  //CONFIG_HUAWEI_KERNEL
 
 static unsigned char *mdss_dsi_base;
 
@@ -336,20 +319,10 @@ static int mdss_dsi_off(struct mdss_panel_data *pdata)
 	/* disable DSI controller */
 	mdss_dsi_controller_cfg(0, pdata);
 
-	mdss_dsi_clk_ctrl(ctrl_pdata, 0);
-
-	ret = mdss_dsi_enable_bus_clocks(ctrl_pdata);
-	if (ret) {
-		pr_err("%s: failed to enable bus clocks. rc=%d\n", __func__,
-			ret);
-		mdss_dsi_panel_power_on(pdata, 0);
-		return ret;
-	}
-
 	/* disable DSI phy */
-	mdss_dsi_phy_enable(ctrl_pdata, 0);
+	mdss_dsi_phy_disable(ctrl_pdata);
 
-	mdss_dsi_disable_bus_clocks(ctrl_pdata);
+	mdss_dsi_clk_ctrl(ctrl_pdata, 0);
 
 	ret = mdss_dsi_panel_power_on(pdata, 0);
 	if (ret) {
@@ -409,7 +382,7 @@ int mdss_dsi_on(struct mdss_panel_data *pdata)
 	if (!pdata->panel_info.mipi.lp11_init)
 		mdss_dsi_panel_reset(pdata, 1);
 
-	ret = mdss_dsi_enable_bus_clocks(ctrl_pdata);
+	ret = mdss_dsi_bus_clk_start(ctrl_pdata);
 	if (ret) {
 		pr_err("%s: failed to enable bus clocks. rc=%d\n", __func__,
 			ret);
@@ -420,7 +393,7 @@ int mdss_dsi_on(struct mdss_panel_data *pdata)
 
 	mdss_dsi_phy_sw_reset((ctrl_pdata->ctrl_base));
 	mdss_dsi_phy_init(pdata);
-	mdss_dsi_disable_bus_clocks(ctrl_pdata);
+	mdss_dsi_bus_clk_stop(ctrl_pdata);
 
 	mdss_dsi_clk_ctrl(ctrl_pdata, 1);
 
@@ -517,12 +490,6 @@ int mdss_dsi_on(struct mdss_panel_data *pdata)
 	if (pdata->panel_info.type == MIPI_CMD_PANEL)
 		mdss_dsi_clk_ctrl(ctrl_pdata, 0);
 
-#ifdef CONFIG_HUAWEI_KERNEL
-    if((pdata ->panel_info.huawei_dynamic_fps) && (pdata ->panel_info.mipi.frame_rate != DEFAULT_FRAME_RATE))
-    {
-       mdss_dsi_set_fps(DEFAULT_FRAME_RATE);
-    }
-#endif
 	pr_debug("%s-:\n", __func__);
 	return 0;
 }
@@ -668,33 +635,58 @@ static int mdss_dsi_dfps_config(struct mdss_panel_data *pdata, int new_fps)
 
 	if (new_fps !=
 		ctrl_pdata->panel_data.panel_info.mipi.frame_rate) {
-		rc = mdss_dsi_clk_div_config
-			(&ctrl_pdata->panel_data.panel_info, new_fps);
-		if (rc) {
-			pr_err("%s: unable to initialize the clk dividers\n",
-							__func__);
-			return rc;
-		}
-		ctrl_pdata->pclk_rate =
-			ctrl_pdata->panel_data.panel_info.mipi.dsi_pclk_rate;
-		ctrl_pdata->byte_clk_rate =
-			ctrl_pdata->panel_data.panel_info.clk_rate / 8;
-
 		if (pdata->panel_info.dfps_update
-				== DFPS_IMMEDIATE_CLK_UPDATE_MODE) {
-			dsi_ctrl = MIPI_INP((ctrl_pdata->ctrl_base) +
-					    0x0004);
-			ctrl_pdata->panel_data.panel_info.mipi.frame_rate =
-									new_fps;
-			dsi_ctrl &= ~0x2;
-			MIPI_OUTP((ctrl_pdata->ctrl_base) + 0x0004,
-							dsi_ctrl);
-			mdss_dsi_controller_cfg(true, pdata);
-			mdss_dsi_clk_ctrl(ctrl_pdata, 0);
-			mdss_dsi_clk_ctrl(ctrl_pdata, 1);
-			dsi_ctrl |= 0x2;
-			MIPI_OUTP((ctrl_pdata->ctrl_base) + 0x0004,
-							dsi_ctrl);
+			== DFPS_IMMEDIATE_PORCH_UPDATE_MODE) {
+			u32 hsync_period, vsync_period;
+			u32 new_dsi_v_total, current_dsi_v_total;
+			vsync_period =
+				mdss_panel_get_vtotal(&pdata->panel_info);
+			hsync_period =
+				mdss_panel_get_htotal(&pdata->panel_info);
+			current_dsi_v_total =
+				MIPI_INP((ctrl_pdata->ctrl_base) + 0x2C);
+			new_dsi_v_total =
+				((vsync_period - 1) << 16) | (hsync_period - 1);
+			MIPI_OUTP((ctrl_pdata->ctrl_base) + 0x2C,
+				(current_dsi_v_total | 0x8000000));
+			if (new_dsi_v_total & 0x8000000) {
+				MIPI_OUTP((ctrl_pdata->ctrl_base) + 0x2C,
+					new_dsi_v_total);
+			} else {
+				MIPI_OUTP((ctrl_pdata->ctrl_base) + 0x2C,
+					(new_dsi_v_total | 0x8000000));
+				MIPI_OUTP((ctrl_pdata->ctrl_base) + 0x2C,
+					(new_dsi_v_total & 0x7ffffff));
+			}
+			pdata->panel_info.mipi.frame_rate = new_fps;
+		} else {
+			rc = mdss_dsi_clk_div_config
+				(&ctrl_pdata->panel_data.panel_info, new_fps);
+			if (rc) {
+				pr_err("%s: unable to initialize the clk dividers\n",
+								__func__);
+				return rc;
+			}
+			ctrl_pdata->pclk_rate =
+				pdata->panel_info.mipi.dsi_pclk_rate;
+			ctrl_pdata->byte_clk_rate =
+				pdata->panel_info.clk_rate / 8;
+
+			if (pdata->panel_info.dfps_update
+					== DFPS_IMMEDIATE_CLK_UPDATE_MODE) {
+				dsi_ctrl = MIPI_INP((ctrl_pdata->ctrl_base) +
+						    0x0004);
+				pdata->panel_info.mipi.frame_rate = new_fps;
+				dsi_ctrl &= ~0x2;
+				MIPI_OUTP((ctrl_pdata->ctrl_base) + 0x0004,
+								dsi_ctrl);
+				mdss_dsi_controller_cfg(true, pdata);
+				mdss_dsi_clk_ctrl(ctrl_pdata, 0);
+				mdss_dsi_clk_ctrl(ctrl_pdata, 1);
+				dsi_ctrl |= 0x2;
+				MIPI_OUTP((ctrl_pdata->ctrl_base) + 0x0004,
+								dsi_ctrl);
+			}
 		}
 	} else {
 		pr_debug("%s: Panel is already at this FPS\n", __func__);
@@ -851,35 +843,39 @@ static struct device_node *mdss_dsi_pref_prim_panel(
 static struct device_node *mdss_dsi_find_panel_of_node(
 		struct platform_device *pdev, char *panel_cfg)
 {
-	int l;
-	int ctrl_id = -1;
-	char *panel_name;
+	int len, i;
+	int ctrl_id = pdev->id - 1;
+	char panel_name[MDSS_MAX_PANEL_LEN];
+	char ctrl_id_stream[3] =  "0:";
+	char *stream = NULL, *pan = NULL;
 	struct device_node *dsi_pan_node = NULL, *mdss_node = NULL;
 
-	l = strlen(panel_cfg);
-	if (!l) {
+	len = strlen(panel_cfg);
+	if (!len) {
 		/* no panel cfg chg, parse dt */
 		pr_debug("%s:%d: no cmd line cfg present\n",
 			 __func__, __LINE__);
-		dsi_pan_node = mdss_dsi_pref_prim_panel(pdev);
+		goto end;
 	} else {
-		if (panel_cfg[0] == '0') {
-			pr_debug("%s:%d: DSI ctrl 1\n", __func__, __LINE__);
-			ctrl_id = 0;
-		} else if (panel_cfg[0] == '1') {
-			pr_debug("%s:%d: DSI ctrl 2\n", __func__, __LINE__);
-			ctrl_id = 1;
+		if (ctrl_id == 1)
+			strlcpy(ctrl_id_stream, "1:", 3);
+
+		stream = strnstr(panel_cfg, ctrl_id_stream, len);
+		if (!stream) {
+			pr_err("controller config is not present\n");
+			goto end;
 		}
-		if ((pdev->id - 1) != ctrl_id) {
-			pr_err("%s:%d:pdev_ID=[%d]\n",
-			       __func__, __LINE__, pdev->id);
-			return NULL;
+		stream += 2;
+
+		pan = strnchr(stream, strlen(stream), ':');
+		if (!pan) {
+			strlcpy(panel_name, stream, MDSS_MAX_PANEL_LEN);
+		} else {
+			for (i = 0; (stream + i) < pan; i++)
+				panel_name[i] = *(stream + i);
+			panel_name[i] = 0;
 		}
-		/*
-		 * skip first two chars '<dsi_ctrl_id>' and
-		 * ':' to get to the panel name
-		 */
-		panel_name = panel_cfg + 2;
+
 		pr_debug("%s:%d:%s:%s\n", __func__, __LINE__,
 			 panel_cfg, panel_name);
 
@@ -896,9 +892,12 @@ static struct device_node *mdss_dsi_find_panel_of_node(
 		if (!dsi_pan_node) {
 			pr_err("%s: invalid pan node, selecting prim panel\n",
 			       __func__);
-			dsi_pan_node = mdss_dsi_pref_prim_panel(pdev);
+			goto end;
 		}
+		return dsi_pan_node;
 	}
+end:
+	dsi_pan_node = mdss_dsi_pref_prim_panel(pdev);
 
 	return dsi_pan_node;
 }
@@ -1147,9 +1146,6 @@ int dsi_panel_device_register(struct device_node *pan_node,
 	}
 
 	ctrl_pdev = of_find_device_by_node(dsi_ctrl_np);
-#ifdef CONFIG_HUAWEI_KERNEL
-    mdss_local_pdev = ctrl_pdev;
-#endif
 
 	rc = mdss_dsi_regulator_init(ctrl_pdev);
 	if (rc) {
@@ -1224,6 +1220,12 @@ int dsi_panel_device_register(struct device_node *pan_node,
 				pinfo->dfps_update =
 						DFPS_IMMEDIATE_CLK_UPDATE_MODE;
 				pr_debug("%s: dfps mode: Immediate clk\n",
+								__func__);
+			} else if (!strcmp(data,
+					    "dfps_immediate_porch_mode")) {
+				pinfo->dfps_update =
+					DFPS_IMMEDIATE_PORCH_UPDATE_MODE;
+				pr_debug("%s: dfps mode: Immediate porch\n",
 								__func__);
 			} else {
 				pr_debug("%s: dfps to default mode\n",
@@ -1540,138 +1542,6 @@ int dsi_panel_device_register(struct device_node *pan_node,
 	return 0;
 }
 
-#ifdef CONFIG_HUAWEI_KERNEL
-void mdss_fb_cancel_fps_timer(void)
-{
-    /* cancal timer */
-    mutex_lock(&mdss_fps_mutexlock);
-    cancel_delayed_work(&mdp_dynamic_frame_rate_worker);
-    flush_workqueue(mdp_dynamic_frame_rate_wq);
-    mutex_unlock(&mdss_fps_mutexlock);
-}
-
-static void mdp_dynamic_frame_rate_workqueue_handler(struct work_struct *work)
-{
-    int ret = 0;
-    struct mdss_dsi_ctrl_pdata *ctrl_pdata = platform_get_drvdata(mdss_local_pdev);
-
-    ret = mdss_dsi_wait4video_done_ret(ctrl_pdata);
-    //mdss_change_fps_error_flag == true means fifo_timeout; ret < =0 means wait isr timeout
-    if((mdss_change_fps_error_flag) || (ret <= 0))
-    {
-        pr_debug("%s:timer work timeout ret = %d, mdss_change_fps_error_flag = %d\n", __func__,ret, mdss_change_fps_error_flag);
-        /* set timer to redo the FPS set */
-        queue_delayed_work(mdp_dynamic_frame_rate_wq,
-                          &mdp_dynamic_frame_rate_worker,
-                          msecs_to_jiffies(MDSS_FPS_WAIT_MS));
-    }
-}
-
-void mdss_set_phy_params(struct mdss_dsi_ctrl_pdata *ctrl_pdata)
-{
-    int i = 0;
-    int off = MDSS_DSI_0_PHY_DSIPHY_TIMING_CTRL_0;
-    int frame_rate = ((ctrl_pdata->panel_data).panel_info.mipi).frame_rate;
-    struct mdss_dsi_phy_ctrl *dsi_phy_params = &(((ctrl_pdata->panel_data).panel_info.mipi).dsi_phy_db);
- 
-    MIPI_OUTP((ctrl_pdata->ctrl_base) + DSI_DSIPHY_PLL_CTRL_1, (pll_divider_config.analog_posDiv -1));//analog_posDiv -1 : qualcomm code set the same way. 
-    wmb();
-
-    MIPI_OUTP((ctrl_pdata->ctrl_base) + DSI_DSIPHY_PLL_CTRL_3, (pll_divider_config.digital_posDiv -1)); //digital_posDiv -1 : qualcomm code set the same way. 
-    wmb();
-
-    if (LOW_FRAME_RATE == frame_rate)
-    {
-        for (i = 0; i < PHY_TIMING_SIZE; i++)
-        {
-            MIPI_OUTP((ctrl_pdata->ctrl_base) + off, dsi_phy_params->timing_30_fps[i]);
-            wmb();
-            off += PHY_PARAMS_SIZE;
-        } 
-    }
-    else if (DEFAULT_FRAME_RATE == frame_rate)
-    {
-        for (i = 0; i < PHY_TIMING_SIZE; i++)
-        {
-            MIPI_OUTP((ctrl_pdata->ctrl_base) + off, dsi_phy_params->timing[i]);
-            wmb();
-            off += PHY_PARAMS_SIZE;
-        }
-    }
-    else
-    {
-        pr_err("%s:phy set frame_rate %d error\n", __func__,frame_rate);
-    }
-}
-//do clk calculate like dsi_panel_device_register
-int dsi_panel_device_clk_set(int frame_rate)
-{
-    int rc = 0;
-    struct mdss_dsi_ctrl_pdata *ctrl_pdata = platform_get_drvdata(mdss_local_pdev);
-
-    if(frame_rate == ctrl_pdata->panel_data.panel_info.mipi.frame_rate)
-    {
-        pr_debug("%s: new frame_rate same as active %d\n", __func__,frame_rate);
-    }
-    rc = mdss_dsi_clk_div_config(&ctrl_pdata->panel_data.panel_info, frame_rate);
-    if (rc)
-    {
-        pr_err("%s: unable to initialize the clk dividers\n", __func__);
-        return rc;
-    }
-    ctrl_pdata->panel_data.panel_info.mipi.frame_rate = frame_rate;
-    ctrl_pdata->pclk_rate = ctrl_pdata->panel_data.panel_info.mipi.dsi_pclk_rate;
-    ctrl_pdata->byte_clk_rate = ctrl_pdata->panel_data.panel_info.clk_rate / 8;// clk / 8 = byteclk. qualcomm code set the same way. 
-    return rc;
-}
-
-void mdss_change_fps(void)
-{
-    u32 status = 0;
-    struct mdss_dsi_ctrl_pdata *ctrl_pdata = NULL;
-    ctrl_pdata = platform_get_drvdata(mdss_local_pdev);
-
-    status = MIPI_INP((ctrl_pdata->ctrl_base) + MDSS_DSI_0_FIFO_STATUS);
-    if ((status & MDSS_DSI_0_FIFO_EMPTY_STATUS) != MDSS_DSI_0_FIFO_EMPTY_STATUS)
-    {
-        mdss_change_fps_error_flag = true;//need redo the mipi settings in timer
-        pr_debug("%s: mdss_change_fps_error_flag = %d\n", __func__,mdss_change_fps_error_flag);
-        return;
-    }
-    mdss_change_fps_error_flag = false;
-    mdss_set_phy_params(ctrl_pdata);
-}
-
-int mdss_dsi_set_fps(int frame_rate)
-{
-    int ret = 0;
-    struct mdss_dsi_ctrl_pdata *ctrl_pdata = NULL;
-    int frame_rate_active = 0;
-        
-    ctrl_pdata = platform_get_drvdata(mdss_local_pdev);
-    frame_rate_active = ctrl_pdata->panel_data.panel_info.mipi.frame_rate;
-
-    if((ctrl_pdata->panel_data.panel_info.huawei_dynamic_fps)
-        && ((LOW_FRAME_RATE == frame_rate) || (DEFAULT_FRAME_RATE == frame_rate)))
-    {
-        pr_err("set frame rate %d\n", frame_rate);
-        if(mdss_change_fps_error_flag)
-        {
-            mdss_fb_cancel_fps_timer();
-        }
-        dsi_panel_device_clk_set(frame_rate);
-        queue_delayed_work(mdp_dynamic_frame_rate_wq,
-                          &mdp_dynamic_frame_rate_worker,
-                          msecs_to_jiffies(MDSS_FPS_START_MS));
-    }
-    else
-    {
-        pr_debug("%s: set frame rate fail\n", __func__);
-        ret = -EINVAL;
-    }
-    return ret;
-}
-#endif  //CONFIG_HUAWEI_KERNEL
 static const struct of_device_id mdss_dsi_ctrl_dt_match[] = {
 	{.compatible = "qcom,mdss-dsi-ctrl"},
 	{}
@@ -1698,12 +1568,6 @@ static int __init mdss_dsi_driver_init(void)
 	int ret;
 
 	ret = mdss_dsi_register_driver();
-#ifdef CONFIG_HUAWEI_KERNEL
-    mutex_init(&mdss_fps_mutexlock);
-    mdp_dynamic_frame_rate_wq = create_singlethread_workqueue("mdp_dynamic_frame_rate_wq");
-    INIT_DELAYED_WORK(&mdp_dynamic_frame_rate_worker,
-                mdp_dynamic_frame_rate_workqueue_handler);
-#endif
 	if (ret) {
 		pr_err("mdss_dsi_register_driver() failed!\n");
 		return ret;

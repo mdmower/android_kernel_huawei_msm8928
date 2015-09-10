@@ -132,6 +132,9 @@ struct sd_ssr {
 	unsigned int		au;			/* In sectors */
 	unsigned int		erase_timeout;		/* In milliseconds */
 	unsigned int		erase_offset;		/* In milliseconds */
+#ifdef CONFIG_HUAWEI_KERNEL
+    unsigned int        speed_class;
+#endif
 };
 
 struct sd_switch_caps {
@@ -365,6 +368,8 @@ struct mmc_card {
 #define MMC_QUIRK_SAMSUNG_SMART (1<<10)          /* Samsung SMART is available */ 
 #endif
 
+#define MMC_QUIRK_CACHE_DISABLE (1 << 14)       /* prevent cache enable */
+
 	unsigned int		erase_size;	/* erase size in sectors */
  	unsigned int		erase_shift;	/* if erase unit is power 2 */
  	unsigned int		pref_erase;	/* in sectors */
@@ -392,6 +397,10 @@ struct mmc_card {
 	unsigned int		sd_bus_speed;	/* Bus Speed Mode set for the card */
 
 	struct dentry		*debugfs_root;
+#ifdef CONFIG_HUAWEI_KERNEL
+	struct dentry          *debugfs_sdxc;
+#endif
+
 	struct mmc_part	part[MMC_NUM_PHY_PARTITION]; /* physical partitions */
 	unsigned int    nr_parts;
 	unsigned int	part_curr;
@@ -404,7 +413,7 @@ struct mmc_card {
 	unsigned int		idle_timeout;
 	struct notifier_block        reboot_notify;
 	bool issue_long_pon;
-	u8 cached_ext_csd;
+	u8 *cached_ext_csd;
 };
 
 /*

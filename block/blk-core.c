@@ -37,10 +37,12 @@
 
 #include "blk.h"
 #ifdef CONFIG_HW_SYSTEM_WR_PROTECT
+#include <misc/app_info.h>
 #ifdef CONFIG_HW_FEATURE_STORAGE_DIAGNOSE_LOG
 #include <linux/store_log.h>
 #endif
 #endif
+
 EXPORT_TRACEPOINT_SYMBOL_GPL(block_bio_remap);
 EXPORT_TRACEPOINT_SYMBOL_GPL(block_rq_remap);
 EXPORT_TRACEPOINT_SYMBOL_GPL(block_bio_complete);
@@ -59,9 +61,10 @@ struct kmem_cache *blk_requestq_cachep;
 
 #ifdef CONFIG_HW_SYSTEM_WR_PROTECT
 /* system write protect flag, 0: disable(default) 1:enable */
-static volatile int ro_secure_debuggable = 0;
+static volatile int *ro_secure_debuggable = NULL;
 /* system partition number is platform dependent, MUST change it according to platform */
 #define PART_SYSTEM "mmcblk0p23"
+static int dis_malloc_debuggable_static = 0;
 #endif
 
 /*
@@ -325,7 +328,8 @@ void __blk_run_queue(struct request_queue *q)
 	if (!q->notified_urgent &&
 		q->elevator->type->ops.elevator_is_urgent_fn &&
 		q->urgent_request_fn &&
-		q->elevator->type->ops.elevator_is_urgent_fn(q)) {
+		q->elevator->type->ops.elevator_is_urgent_fn(q) &&
+		list_empty(&q->flush_data_in_flight)) {
 		q->notified_urgent = true;
 		q->urgent_request_fn(q);
 	} else
@@ -1787,11 +1791,46 @@ void generic_make_request(struct bio *bio)
 	current->bio_list = NULL; /* deactivate */
 }
 EXPORT_SYMBOL(generic_make_request);
+
 #ifdef CONFIG_HW_SYSTEM_WR_PROTECT
 int blk_set_ro_secure_debuggable(int state)
 {
-    ro_secure_debuggable = state;
-    return 0;
+	int ret, i, n = 0;
+	char str[32] = {0};
+	const char reason_str[3][10] = {"widevine", "root", "boot"};
+
+	enum dis_wp_flag {
+        DIS_WIDEVINE = 2,
+        DIS_ROOT = 4,
+        DIS_BOOT = 8,
+	};
+	const int sys_ro_flag[] = {DIS_WIDEVINE, DIS_ROOT, DIS_BOOT};
+
+	if (state == 1) {
+		*ro_secure_debuggable = state;
+		strncpy(str, "enable", sizeof(str) - 1);
+		if (!dis_malloc_debuggable_static)
+			strncat(str, "|malloc", sizeof(str) - strlen(str) - 1);
+	}else{
+		strncat(str, "disable(", sizeof(str) - strlen(str) - 1);
+		for (i = 0; i < 3; i++)
+		{
+			if (state & sys_ro_flag[i])
+			{
+				if (n)
+					strncat(str, "|", sizeof(str) - strlen(str) - 1);
+				strncat(str, reason_str[i], sizeof(str) - strlen(str) - 1);
+				n++;
+			}
+		}
+		strncat(str, ")", sizeof(str) - strlen(str) - 1);
+	}
+
+	printk("[HW] Set huawei_system_ro %s\n", str);
+	ret = app_info_set("huawei_system_ro", str);
+	if (ret)
+		printk(KERN_ERR "Fail to write huawei_system_ro to app_info!\n");
+	return 0;
 }
 EXPORT_SYMBOL(blk_set_ro_secure_debuggable);
 #endif
@@ -1812,6 +1851,7 @@ void submit_bio(int rw, struct bio *bio)
 #ifdef CONFIG_HW_SYSTEM_WR_PROTECT
     char devname[BDEVNAME_SIZE] = {0};
 #endif
+
 	bio->bi_rw |= rw;
 
 	/*
@@ -1826,6 +1866,7 @@ void submit_bio(int rw, struct bio *bio)
 			task_io_account_read(bio->bi_size);
 			count_vm_events(PGPGIN, count);
 		}
+
 #ifdef CONFIG_HW_SYSTEM_WR_PROTECT
         if(rw & WRITE)
         {
@@ -1839,7 +1880,7 @@ void submit_bio(int rw, struct bio *bio)
              * root user: send write request to mmc driver.
              */
             if((strstr(devname,PART_SYSTEM)!=NULL) &&
-                    ro_secure_debuggable)
+                    *ro_secure_debuggable)
             {
 #ifdef CONFIG_HW_FEATURE_STORAGE_DIAGNOSE_LOG
                 MSG_WRAPPER(STORAGE_ERROR_BASE|EXT4_RUNNING_ERROR_BASE|EXT4_ERR_CAPS,
@@ -1849,7 +1890,7 @@ void submit_bio(int rw, struct bio *bio)
                         (unsigned long long)bio->bi_sector,
                         devname,
                         count,
-                        ro_secure_debuggable,
+                        *ro_secure_debuggable,
                         (strstr(saved_command_line,"androidboot.widvine_state=locked") != NULL) ? "locked" : "unlock");
 #else
                 printk(KERN_DEBUG "[HW]:EXT4_ERR_CAPS:%s(%d)[Parent: %s(%d)]: %s block %Lu on %s (%u sectors) %d %s.\n",
@@ -1858,11 +1899,11 @@ void submit_bio(int rw, struct bio *bio)
                         (unsigned long long)bio->bi_sector,
                         devname,
                         count,
-                        ro_secure_debuggable,
+                        *ro_secure_debuggable,
                         (strstr(saved_command_line,"androidboot.widvine_state=locked") != NULL) ? "locked" : "unlock");
 
 #endif
-                bio_endio(bio, -EIO);
+            	bio_endio(bio, 0);
                 return;
             }
         }
@@ -3243,3 +3284,19 @@ int __init blk_dev_init(void)
 
 	return 0;
 }
+
+#ifdef CONFIG_HW_SYSTEM_WR_PROTECT
+int __init ro_secure_debuggable_init(void)
+{
+	static int ro_secure_debuggable_static = 0;
+
+	ro_secure_debuggable = kzalloc(sizeof(int), GFP_KERNEL);
+	if (!ro_secure_debuggable){
+		ro_secure_debuggable = &ro_secure_debuggable_static;
+		dis_malloc_debuggable_static = 1;
+	}
+	
+	return 0;
+}
+late_initcall(ro_secure_debuggable_init);
+#endif

@@ -151,6 +151,7 @@ static struct device_attribute power_supply_attrs[] = {
 	POWER_SUPPLY_ATTR(resume_en),
 	POWER_SUPPLY_ATTR(boost_en),
 	POWER_SUPPLY_ATTR(usb_suspend_en),
+	POWER_SUPPLY_ATTR(running_test_status),
 	POWER_SUPPLY_ATTR(current_remain_capacity),
 #endif
 	POWER_SUPPLY_ATTR(technology),

@@ -4,7 +4,6 @@
                qcom,vref-batt-therm = <1800000>;
                /include/ "HB4742A0RBC_ATL_SWD-4v35-2300mah.dtsi"
                /include/ "HB4742A0RBC_LG_SCUD-4v35-2300mah.dtsi"
-               /include/ "HB4742A0RBC_LS_LS-4v35-2300mah.dtsi"
         };
 };
 

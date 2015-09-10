@@ -1296,9 +1296,9 @@ static int do_inquiry(struct fsg_common *common, struct fsg_buffhd *bh)
 		return 36;
 	}
 	
-#ifdef CONFIG_HUAWEI_USB
-    curlun->cdrom = (common->lun == cdrom_index)? 1 : 0;
-#endif
+    /* curlun->cdrom is already set */
+
+
 	buf[0] = curlun->cdrom ? TYPE_ROM : TYPE_DISK;
 	buf[1] = curlun->removable ? 0x80 : 0;
 	buf[2] = 2;		/* ANSI SCSI level 2 */

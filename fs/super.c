@@ -828,6 +828,7 @@ void emergency_remount(void)
 #ifdef CONFIG_HW_SYSTEM_WR_PROTECT	
     blk_set_ro_secure_debuggable(0);
 #endif	
+
 	work = kmalloc(sizeof(*work), GFP_ATOMIC);
 	if (work) {
 		INIT_WORK(work, do_emergency_remount);
@@ -1042,7 +1043,6 @@ struct dentry *mount_bdev(struct file_system_type *fs_type,
 	}
 
 /* Delete several lines */
-
 	return dget(s->s_root);
 
 error_s:

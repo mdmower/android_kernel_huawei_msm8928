@@ -195,6 +195,7 @@ struct synaptics_dsx_platform_data {
 	bool glove_enabled;
 	unsigned int easy_wakeup_supported_gestures;
 	bool glove_supported;
+	bool glove_edge_switch_supported;
 	struct syanptics_wakeup_keys *wakeup_keys;
 	unsigned char fast_relax_gesture;
 	bool holster_supported;

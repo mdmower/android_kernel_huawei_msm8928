@@ -48,7 +48,7 @@
 			39 01 00 00 00 00 02 BC 00
 			39 01 00 00 00 00 04 CC 03 00 00
 			39 01 00 00 00 00 06 B0 00 0C 40 3C 3C
-			39 01 00 00 00 00 03 B1 F4 00
+			39 01 00 00 00 00 03 B1 FC 00
 			39 01 00 00 00 00 02 B6 08
 			39 01 00 00 00 00 03 B7 00 00
 			39 01 00 00 00 00 02 BA 01
@@ -57,7 +57,7 @@
 			39 01 00 00 00 00 0B E3 E5 E3 E1 E0 DC D7 D0 CC C8 C4
 			39 01 00 00 00 00 0A D4 01 00 00 00 00 00 00 00 00
 			39 01 00 00 00 00 11 D6 01 05 09 0D 10 14 18 1C 20 24 28 2C 30 34 38 3C
-			39 01 00 00 00 00 0D D7 28 2A 30 28 26 22 00 00 00 00 00 00
+			39 01 00 00 00 00 0D D7 28 2A 30 34 38 3D 00 00 00 00 00 00
 			39 01 00 00 00 00 0E D8 05 05 00 00 00 00 05 05 00 00 00 00 00
 			39 01 00 00 00 00 06 F0 55 AA 52 08 01
 			39 01 00 00 00 00 04 B0 0A 0A 0A
@@ -119,7 +119,7 @@
 		qcom,mdss-dsi-t-clk-post = <0x04>;
 		qcom,mdss-dsi-t-clk-pre = <0x1b>;
 		qcom,mdss-dsi-bl-min-level = <8>;
-		qcom,mdss-dsi-bl-max-level = <250>;
+		qcom,mdss-dsi-bl-max-level = <255>;
 		qcom,mdss-dsi-dma-trigger = "trigger_sw";
 		qcom,mdss-dsi-mdp-trigger = "none";
 		qcom,mdss-dsi-bl-pmic-control-type = "bl_ctrl_dcs";

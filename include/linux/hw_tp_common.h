@@ -28,6 +28,7 @@ enum f54_product_module_name {
 	FW_EELY = 1,
 	FW_TRULY = 2,
 	FW_JUNDA = 5,
+	FW_LENSONE = 6,
 	UNKNOW_PRODUCT_MODULE = 0xff,
 };
 struct holster_mode{

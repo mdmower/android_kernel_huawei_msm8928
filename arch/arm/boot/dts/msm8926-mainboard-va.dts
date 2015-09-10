@@ -22,7 +22,7 @@
 / {
 	model = "Qualcomm MSM 8926 CDP mainboard";
 	compatible = "qcom,msm8926-cdp", "qcom,msm8926", "qcom,cdp";
-	qcom,board-id = <8068 0>;
+	qcom,msm-id = <200 8068 0>;
 };
 
 

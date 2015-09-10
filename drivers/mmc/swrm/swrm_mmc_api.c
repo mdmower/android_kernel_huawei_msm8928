@@ -76,9 +76,11 @@ static void swrm_mmc_prepare_mrq(struct mmc_card *card,
 
 	mrq->cmd->arg = lba;
 	if (!mmc_card_blockaddr(card))
+	{
 		mrq->cmd->arg <<= 9;
 		printk(KERN_DEBUG "swrm_mmc_prepare_mrq opcode: %d\n",
 			mrq->cmd->opcode);
+	}
 	mrq->cmd->flags = MMC_RSP_R1 | MMC_CMD_ADTC;
 
 	if (blocks == 1) {
@@ -220,23 +222,30 @@ static int mmc_swrm_map_sg(struct mmc_swrm_mem *mem, unsigned long size,
 		}
 	} while (sz);
 
-	if (sz)
-		return -EINVAL;
+//	if (sz)
+//		return -EINVAL;
 
 	if (sg)
 		sg_mark_end(sg);
 
 	return 0;
 }
-
 static void mmc_swrm_free_mem(struct mmc_swrm_mem *mem)
 {
 	if (!mem)
 		return;
+	
 	while (mem->cnt--)
-		__free_pages(mem->arr[mem->cnt].page,
-			     mem->arr[mem->cnt].order);
+	{
+		if ( NULL == mem->arr )
+			break;
+		
+			__free_pages(mem->arr[mem->cnt].page,
+				     mem->arr[mem->cnt].order);
+	}
 	kfree(mem->arr);
+	
+	kfree(mem);
 }
 
 /*

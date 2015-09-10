@@ -426,6 +426,7 @@ static ssize_t lcd_bias_volt_store_common(struct device *dev,
 		size_t size)
 {
 	int retval = 0;
+	int ret = 0;
 	int retval_pos = 0;
 	int retval_neg = 0;
 	int cmdcode = 0;
@@ -455,14 +456,16 @@ static ssize_t lcd_bias_volt_store_common(struct device *dev,
 	retval_neg = lcd_bias_volt_store(dev, size, BIASIC_VNEG_REG, cmdcode);
 	if (retval_neg < 0){
 		/* Reset VPOS to old one */
-		if (0 != current_volt)
-			lcd_bias_volt_store(dev, size, BIASIC_VPOS_REG, current_volt);
+		if (0 != current_volt){
+			ret = lcd_bias_volt_store(dev, size, BIASIC_VPOS_REG, current_volt);
+			if(ret < 0)
+				lcd_bias_log_dbg("lcd bias volt store-reset vpos to old one  failed!\n");
+		}
 		return retval_neg;
 	}
 
 	return (ssize_t)(retval_pos+retval_neg);
 }
-
 /* sysfs attributes */
 static DEVICE_ATTR(lcd_bias_volt_vpos, S_IRUGO | S_IWUSR,
 				   lcd_bias_volt_show_vpos, lcd_bias_volt_store_vpos);

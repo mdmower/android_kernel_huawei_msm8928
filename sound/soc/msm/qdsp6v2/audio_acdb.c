@@ -1,4 +1,4 @@
-/* Copyright (c) 2010-2013, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2010-2014, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -42,8 +42,6 @@ struct acdb_data {
 	uint32_t		usage_count;
 
 	struct mutex		acdb_mutex;
-
-	struct acdb_cal_block		spkr_tx_cal;
 
 	/* ANC Cal */
 	struct acdb_cal_block		anc_cal;
@@ -297,50 +295,6 @@ done:
 	return result;
 }
 
-int store_spkr_tx_cal(struct cal_block *cal_block)
-{
-	int result = 0;
-	pr_debug("%s,\n", __func__);
-
-	if (!cal_block) {
-		pr_err("ACDB=> NULL pointer sent to %s\n", __func__);
-		result = -EINVAL;
-		goto done;
-	}
-	if (cal_block->cal_offset > acdb_data.mem_len) {
-		pr_err("%s: offset %d is > mem_len %llu\n",
-		 __func__, cal_block->cal_offset, acdb_data.mem_len);
-		result = -EINVAL;
-		goto done;
-	}
-
-	acdb_data.spkr_tx_cal.cal_size  = cal_block->cal_size;
-	acdb_data.spkr_tx_cal.cal_paddr =
-		cal_block->cal_offset + acdb_data.paddr;
-	acdb_data.spkr_tx_cal.cal_kvaddr =
-		cal_block->cal_offset + acdb_data.kvaddr;
-done:
-	return result;
-}
-
-int get_spkr_tx_cal(struct acdb_cal_block *cal_block)
-{
-	int result = 0;
-	pr_debug("%s,\n", __func__);
-
-	if (!cal_block) {
-		pr_err("ACDB=> NULL pointer sent to %s\n", __func__);
-		result = -EINVAL;
-		goto done;
-	}
-
-	cal_block->cal_size = acdb_data.spkr_tx_cal.cal_size;
-	cal_block->cal_paddr = acdb_data.spkr_tx_cal.cal_paddr;
-	cal_block->cal_kvaddr = acdb_data.spkr_tx_cal.cal_kvaddr;
-done:
-	return result;
-}
-
 int store_aanc_cal(struct cal_block *cal_block)
 {
 	int result = 0;
@@ -451,9 +405,9 @@ int get_hw_delay(int32_t path, struct hw_delay_entry *entry)
 
 done:
 	mutex_unlock(&acdb_data.acdb_mutex);
-ret:
 	pr_debug("ACDB=> %s: Path = %d samplerate = %u usec = %u status %d\n",
 		 __func__, path, entry->sample_rate, entry->delay_usec, result);
+ret:
 	return result;
 }
 
@@ -1197,13 +1151,6 @@ static int unmap_cal_tables(void)
 		result = result2;
 	}
 
-	result2 = q6lsm_unmap_cal_blocks();
-	if (result2 < 0) {
-		pr_err("%s: lsm_unmap_cal_blocks failed, err = %d\n",
-			__func__, result2);
-		result = result2;
-	}
-
 	result2 = q6asm_unmap_cal_blocks();
 	if (result2 < 0) {
 		pr_err("%s: asm_unmap_cal_blocks failed, err = %d\n",
@@ -1259,7 +1206,7 @@ static int register_memory(void)
 
 	result = allocate_col_data();
 	if (result) {
-		pr_err("%s: allocate_hw_delay_entries failed, rc = %d\n",
+		pr_err("%s: allocate_col_data failed, rc = %d\n",
 			__func__, result);
 		goto err_done;
 	}
@@ -1522,9 +1469,6 @@ static long acdb_ioctl(struct file *f,
 		goto done;
 	case AUDIO_SET_AANC_CAL:
 		result = store_aanc_cal((struct cal_block *)data);
-		goto done;
-	case AUDIO_SET_SPKR_TX_CAL:
-		result = store_spkr_tx_cal((struct cal_block *)data);
 		goto done;
 	default:
 		pr_err("ACDB=> ACDB ioctl not found!\n");

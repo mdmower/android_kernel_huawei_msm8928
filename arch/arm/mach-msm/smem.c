@@ -24,19 +24,11 @@
 #include <mach/ramdump.h>
 #include <mach/subsystem_notif.h>
 #include <mach/msm_ipc_logging.h>
+#ifdef CONFIG_HUAWEI_KERNEL
+#include <mach/subsystem_restart.h>
+#endif
 
 #include "smem_private.h"
-
-/**
- * OVERFLOW_ADD_UNSIGNED() - check for unsigned overflow
- *
- * @type: type to check for overflow
- * @a: left value to use
- * @b: right value to use
- * @returns: true if a + b will result in overflow; false otherwise
- */
-#define OVERFLOW_ADD_UNSIGNED(type, a, b) \
-	(((type)~0 - (a)) < (b) ? true : false)
 
 #define MODEM_SBL_VERSION_INDEX 7
 #define SMEM_VERSION_INFO_SIZE (32 * 4)
@@ -1008,7 +1000,11 @@ static int restart_notifier_cb(struct notifier_block *this,
 		remote_spin_release(&remote_spinlock, notifier->processor);
 		remote_spin_release_all(notifier->processor);
 
+#ifdef CONFIG_HUAWEI_KERNEL
+		if (smem_ramdump_dev && enable_ramdumps) {
+#else
 		if (smem_ramdump_dev) {
+#endif
 			int ret;
 
 			SMEM_DBG("%s: saving ramdump\n", __func__);

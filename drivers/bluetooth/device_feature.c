@@ -261,6 +261,7 @@ static int devicefeature_write_proc_sinr_threshold(struct file *file, const char
 {
 	/* devicefeature_write_proc_sinr_threshold function is not used now.*/
 	char sinr_threshold[10];
+	memset(sinr_threshold, 0, sizeof(sinr_threshold));
 
 	FMDERR("sinr threshold write called.\n");
 
@@ -304,15 +305,16 @@ static int devicefeature_read_proc_sinr_samples(char *page, char **start, off_t 
         sinr_samples = g_sinr_samples;
     }
     FMDBG("in the proc file systerm ,sinr_samples = %d .\n",sinr_samples);
-    return sprintf(page, "%d\n",sinr_samples);
+
+	return sprintf(page, "%d\n",sinr_samples);
 }
 
 static int devicefeature_write_proc_sinr_samples(struct file *file, const char *buffer,
 					unsigned long count, void *data)
 {
-	/* devicefeature_write_proc_sinr_samples function is not used now.*/
-	char sinr_samples[10];
-
+	/* devicefeature_write_proc_sinr_samples function is not used now.*/	
+	char sinr_samples[10];	
+	memset(sinr_samples, 0, sizeof(sinr_samples));
 	FMDBG("sinr samples write called.\n");
 
     //null pointer protection

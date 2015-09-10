@@ -1290,7 +1290,8 @@ static int bq27510_update_firmware(struct i2c_client *client, const char *pFileP
     struct firmware_header_entry entry;
     loff_t pos;
     ssize_t vfs_read_retval = 0;
-    char id[ID_LEN];
+    /* coverity 102168 */
+    char id[ID_LEN] = {0};
     char current_id[ID_LEN];
     int temp;
     struct bq27510_device_info *di = i2c_get_clientdata(client);
@@ -1434,10 +1435,22 @@ static ssize_t bq27510_attr_store(struct device_driver *driver,const char *buf, 
 
     memcpy (path_image, buf,  count);
     /* replace '\n' with  '\0'  */
+    /* coverity 101792 */
     if((path_image[count-1]) == '\n')
+    {
         path_image[count-1] = '\0';
+    }
     else
-        path_image[count] = '\0';
+    {
+        if (count < 255)
+        {
+            path_image[count] = '\0';
+        }
+        else
+        {
+            path_image[count-1] = '\0';
+        }
+    }
 
     schedule_delayed_work(&g_battery_measure_by_bq27510_device->update_work,0);
     return count;
@@ -1703,12 +1716,24 @@ static ssize_t bq27510_update_gasgauge_version(struct device *dev,
     battery_id_status = get_battery_id();
     force_update_firmware_version_flag = HAND_UPDATE_FIRMWARE_ENABLE;
 
+    /* coverity 101795 */
     memcpy (path_image, buf,  count);
     /* replace '\n' with  '\0'  */
     if((path_image[count-1]) == '\n')
+    {
         path_image[count-1] = '\0';
+    }
     else
-        path_image[count] = '\0';
+    {
+        if (count < 255)
+        {
+            path_image[count] = '\0';
+        }
+        else
+        {
+            path_image[count-1] = '\0';
+        }
+    }
 
     /*enter firmware bqfs download*/
     gBq27510DownloadFirmwareFlag = BSP_FIRMWARE_DOWNLOAD_MODE;

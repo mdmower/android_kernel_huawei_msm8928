@@ -75,6 +75,9 @@
 #include "f_serial.c"
 #include "f_acm.c"
 #include "f_adb.c"
+#ifdef CONFIG_HUAWEI_KERNEL
+#include "f_hdb.c"
+#endif
 #include "f_ccid.c"
 #include "f_mtp.c"
 #include "f_accessory.c"
@@ -627,6 +630,130 @@ static void adb_closed_callback(void)
 		mutex_unlock(&dev->mutex);
 #endif
 }
+
+#ifdef CONFIG_HUAWEI_KERNEL
+struct hdb_data {
+    bool opened;
+    bool enabled;
+    struct android_dev *dev;
+};
+
+static int
+hdb_function_init(struct android_usb_function *f,
+        struct usb_composite_dev *cdev)
+{
+    f->config = kzalloc(sizeof(struct hdb_data), GFP_KERNEL);
+    if (!f->config)
+        return -ENOMEM;
+
+    return hdb_setup();
+}
+
+static void hdb_function_cleanup(struct android_usb_function *f)
+{
+    hdb_cleanup();
+    kfree(f->config);
+}
+
+static int
+hdb_function_bind_config(struct android_usb_function *f,
+        struct usb_configuration *c)
+{
+    return hdb_bind_config(c);
+}
+
+static void hdb_android_function_enable(struct android_usb_function *f)
+{
+    /* normal mode contains hdb port even if hdbd is not started */
+#ifndef CONFIG_HUAWEI_USB
+    struct android_dev *dev = f->android_dev;
+    struct hdb_data *data = f->config;
+
+    data->enabled = true;
+
+
+    /* Disable the gadget until hdbd is ready */
+    if (!data->opened)
+        android_disable(dev);
+#endif      
+}
+
+static void hdb_android_function_disable(struct android_usb_function *f)
+{
+    /* normal mode contains hdb port even if hdbd is not started */
+#ifndef CONFIG_HUAWEI_USB
+    struct android_dev *dev = f->android_dev;
+    struct hdb_data *data = f->config;
+
+    data->enabled = false;
+
+    /* Balance the disable that was called in closed_callback */
+    if (!data->opened)
+        android_enable(dev);
+#endif
+}
+
+static struct android_usb_function hdb_function = {
+    .name       = "hdb",
+    .enable     = hdb_android_function_enable,
+    .disable    = hdb_android_function_disable,
+    .init       = hdb_function_init,
+    .cleanup    = hdb_function_cleanup,
+    .bind_config    = hdb_function_bind_config,
+};
+
+static void hdb_ready_callback(void)
+{
+    /* normal mode contains hdb port even if hdbd is not started */
+#ifndef CONFIG_HUAWEI_USB
+    struct android_dev *dev = hdb_function.android_dev;
+    struct hdb_data *data = hdb_function.config;
+
+    /* dev is null in case HDB is not in the composition */
+    if (dev)
+        mutex_lock(&dev->mutex);
+
+    /* Save dev in case the hdb function will get disabled */
+    data->dev = dev;
+    data->opened = true;
+
+    if (data->enabled && dev)
+        android_enable(dev);
+
+    if (dev)
+        mutex_unlock(&dev->mutex);
+#endif
+}
+
+static void hdb_closed_callback(void)
+{
+    /* normal mode contains hdb port even if hdbd is not started */
+#ifndef CONFIG_HUAWEI_USB
+    struct hdb_data *data = hdb_function.config;
+    struct android_dev *dev = hdb_function.android_dev;
+
+    /* In case new composition is without HDB, use saved one */
+    if (!dev)
+        dev = data->dev;
+
+    if (!dev)
+        pr_err("hdb_closed_callback: data->dev is NULL");
+
+    if (dev)
+        mutex_lock(&dev->mutex);
+
+    data->opened = false;
+
+    if (data->enabled && dev)
+        android_disable(dev);
+
+    data->dev = NULL;
+
+    if (dev)
+        mutex_unlock(&dev->mutex);
+#endif
+}
+#endif
 
 
 /*-------------------------------------------------------------------------*/
@@ -1848,17 +1975,20 @@ struct mass_storage_function_config {
 	struct fsg_common *common;
 };
 
+#define MAX_LUN_NAME 8
 static int mass_storage_function_init(struct android_usb_function *f,
 					struct usb_composite_dev *cdev)
 {
-#ifndef CONFIG_HUAWEI_USB
+//20140504 android_dev need to be used by QC
+//#ifndef CONFIG_HUAWEI_USB
 	struct android_dev *dev = cdev_to_android_dev(cdev);
-#endif
+//#endif
 	struct mass_storage_function_config *config;
 	struct fsg_common *common;
 	int err;
-	int i;
-	const char *name[3];
+	int i, n;
+	char name[FSG_MAX_LUNS][MAX_LUN_NAME];
+	u8 uicc_nluns = dev->pdata ? dev->pdata->uicc_nluns : 0;
 
 	config = kzalloc(sizeof(struct mass_storage_function_config),
 								GFP_KERNEL);
@@ -1867,19 +1997,21 @@ static int mass_storage_function_init(struct android_usb_function *f,
 
 #ifndef CONFIG_HUAWEI_USB
 	config->fsg.nluns = 1;
-	name[0] = "lun";
+	snprintf(name[0], MAX_LUN_NAME, "lun");
+	config->fsg.luns[0].removable = 1;
+
 	if (dev->pdata && dev->pdata->cdrom) {
 		config->fsg.luns[config->fsg.nluns].cdrom = 1;
 		config->fsg.luns[config->fsg.nluns].ro = 1;
 		config->fsg.luns[config->fsg.nluns].removable = 0;
-		name[config->fsg.nluns] = "lun0";
+		snprintf(name[config->fsg.nluns], MAX_LUN_NAME, "lun0");
 		config->fsg.nluns++;
 	}
 	if (dev->pdata && dev->pdata->internal_ums) {
 		config->fsg.luns[config->fsg.nluns].cdrom = 0;
 		config->fsg.luns[config->fsg.nluns].ro = 0;
 		config->fsg.luns[config->fsg.nluns].removable = 1;
-		name[config->fsg.nluns] = "lun1";
+		snprintf(name[config->fsg.nluns], MAX_LUN_NAME, "lun1");
 		config->fsg.nluns++;
 	}
 
@@ -1895,6 +2027,18 @@ static int mass_storage_function_init(struct android_usb_function *f,
         config->fsg.luns[i].nofua = 1;     
 	}   
 #endif
+
+	if (uicc_nluns > FSG_MAX_LUNS - config->fsg.nluns) {
+		uicc_nluns = FSG_MAX_LUNS - config->fsg.nluns;
+		pr_debug("limiting uicc luns to %d\n", uicc_nluns);
+	}
+
+	for (i = 0; i < uicc_nluns; i++) {
+		n = config->fsg.nluns;
+		snprintf(name[n], MAX_LUN_NAME, "uicc%d", i);
+		config->fsg.luns[n].removable = 1;
+		config->fsg.nluns++;
+	}
 
 	common = fsg_common_init(NULL, cdev, &config->fsg);
 	if (IS_ERR(common)) {
@@ -2051,6 +2195,8 @@ static ssize_t cdrom_index_store(struct device *pdev, struct device_attribute *a
 {
     char buf[32];
     int value = 0;
+    struct android_usb_function *f = dev_get_drvdata(pdev);
+    struct mass_storage_function_config *config = f->config;
     
     strlcpy(buf, buff, sizeof(buf));
 
@@ -2068,11 +2214,21 @@ static ssize_t cdrom_index_store(struct device *pdev, struct device_attribute *a
         return -1;
     }
 
+    if(likely(config) && likely(config->common) && likely(config->common->luns)
+        && value < USB_MAX_LUNS)
+    {
+        down_write(&config->common->filesem);
+        config->common->luns[value].cdrom = 1;
+        up_write(&config->common->filesem);
+    }
+
     cdrom_index = value;
     pr_info("%s: cdrom_index = %d\n", __func__, cdrom_index);
     return size;
 
 }
+
+
 
 static DEVICE_ATTR(nluns, S_IRUGO | S_IWUSR, nluns_show, nluns_store);
 static DEVICE_ATTR(cdrom_index, S_IRUGO | S_IWUSR, cdrom_index_show, cdrom_index_store);
@@ -2257,6 +2413,9 @@ static struct android_usb_function *supported_functions[] = {
 	&qdss_function,
 	&serial_function,
 	&adb_function,
+#ifdef CONFIG_HUAWEI_KERNEL
+    &hdb_function,
+#endif
 	&ccid_function,
 	&acm_function,
 	&mtp_function,
@@ -3272,6 +3431,10 @@ static int __devinit android_probe(struct platform_device *pdev)
 		}
 
 		pdata->streaming_func_count = len;
+
+		ret = of_property_read_u32(pdev->dev.of_node,
+				"qcom,android-usb-uicc-nluns",
+				&pdata->uicc_nluns);
 	} else {
 		pdata = pdev->dev.platform_data;
 	}

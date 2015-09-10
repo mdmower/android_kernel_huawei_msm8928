@@ -1686,6 +1686,7 @@ static int do_remount(struct path *path, int flags, int mnt_flags,
 		return err;
 
     /* Delete several lines */
+
 	down_write(&sb->s_umount);
 	if (flags & MS_BIND)
 		err = change_mount_flags(path->mnt, flags);

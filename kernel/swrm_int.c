@@ -112,7 +112,12 @@ int mmc_blk_dispatch_swrm(struct mmc_card *card, void *data)
 		}
 	}
 exit:
-	kfree(ioc_opt->data);
+	if (ioc_opt) 
+	{
+		kfree(ioc_opt->data);
+		kfree(ioc_opt);
+	}
+	
 	return rc;
 }
 

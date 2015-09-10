@@ -1,5 +1,4 @@
-/* Introduced feature for controlling led max brightness 
- * and blinking brightness using dtsi*/
+/*pick the led dts for 1.0.1 of 8926 platform*/
 /* Copyright (c) 2012-2013, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
@@ -137,11 +136,11 @@
 #define	FLASH_SELFCHECK_ENABLE		0x80
 #define FLASH_RAMP_STEP_27US		0xBF
 
-#define FLASH_STROBE_SW			0xC0
-#define FLASH_STROBE_HW			0x04
+#define FLASH_HW_SW_STROBE_SEL_MASK	0x04
 #define FLASH_STROBE_MASK		0xC7
 #define FLASH_LED_0_OUTPUT		0x80
 #define FLASH_LED_1_OUTPUT		0x40
+#define FLASH_TORCH_OUTPUT		0xC0
 
 #define FLASH_CURRENT_PRGM_MIN		1
 #define FLASH_CURRENT_PRGM_SHIFT	1
@@ -226,6 +225,9 @@
 #define LED_ERR  1
 #define LED_INFO 2
 #define LED_DBG  3
+
+//only one task can control led
+static struct mutex hw_led_lock;
 
 int led_debug_mask = LED_INFO ;
 module_param_named(led_debug_mask, led_debug_mask, int, 0664);
@@ -733,8 +735,9 @@ static int qpnp_wled_set(struct qpnp_led_data *led)
 /* add the log dynamic control */
 static int qpnp_mpp_set(struct qpnp_led_data *led)
 {
-	int rc, val;
-	int duty_us;
+	int rc;
+	u8 val;
+	int duty_us, duty_ns, period_us;
 
 	LED_LOG_DBG(" %s begin, brightness:%d \n ", __func__, led->cdev.brightness);
 	LED_LOG_DBG(" led base add:0x%x \n", led->base);
@@ -746,6 +749,7 @@ static int qpnp_mpp_set(struct qpnp_led_data *led)
 				"set to minimum supported\n");
 			led->cdev.brightness = led->mpp_cfg->min_brightness;
 		}
+
 #ifdef CONFIG_HUAWEI_KERNEL
 		if (led->cdev.brightness > led->max_brightness) {
 			LED_LOG_DBG("brightness is more than supported, set to maximum supported\n");
@@ -760,15 +764,25 @@ static int qpnp_mpp_set(struct qpnp_led_data *led)
 					led->mpp_cfg->pwm_cfg->default_mode;
 			}
 		}
+
 		if (led->mpp_cfg->pwm_mode == PWM_MODE) {
-			LED_LOG_DBG(" %s no blink!\n", __func__);
-			pwm_disable(led->mpp_cfg->pwm_cfg->pwm_dev);
-			duty_us = (led->mpp_cfg->pwm_cfg->pwm_period_us *
-					led->cdev.brightness) / LED_FULL;
 			/*config pwm for brightness scaling*/
-			rc = pwm_config(led->mpp_cfg->pwm_cfg->pwm_dev,
+			period_us = led->mpp_cfg->pwm_cfg->pwm_period_us;
+			if (period_us > INT_MAX / NSEC_PER_USEC) {
+				duty_us = (period_us * led->cdev.brightness) /
+					LED_FULL;
+				rc = pwm_config_us(
+					led->mpp_cfg->pwm_cfg->pwm_dev,
 					duty_us,
-					led->mpp_cfg->pwm_cfg->pwm_period_us);
+					period_us);
+			} else {
+				duty_ns = ((period_us * NSEC_PER_USEC) /
+					LED_FULL) * led->cdev.brightness;
+				rc = pwm_config(
+					led->mpp_cfg->pwm_cfg->pwm_dev,
+					duty_ns,
+					period_us * NSEC_PER_USEC);
+			}
 			if (rc < 0) {
 				dev_err(&led->spmi_dev->dev, "Failed to " \
 					"configure pwm for new values\n");
@@ -855,7 +869,6 @@ static int qpnp_mpp_set(struct qpnp_led_data *led)
 
 	return 0;
 }
-
 static int qpnp_flash_regulator_operate(struct qpnp_led_data *led, bool on)
 {
 	int rc, i;
@@ -968,6 +981,7 @@ static int qpnp_flash_set(struct qpnp_led_data *led)
 {
 	int rc, error;
 	int val = led->cdev.brightness;
+	mutex_lock(&hw_led_lock);
 
 	if (led->flash_cfg->torch_enable)
 		led->flash_cfg->current_prgm =
@@ -993,6 +1007,7 @@ static int qpnp_flash_set(struct qpnp_led_data *led)
 					dev_err(&led->spmi_dev->dev,
 					"Torch regulator operate failed(%d)\n",
 					rc);
+					mutex_unlock(&hw_led_lock);
 					return rc;
 				}
 			} else if (led->flash_cfg->peripheral_subtype ==
@@ -1065,6 +1080,13 @@ static int qpnp_flash_set(struct qpnp_led_data *led)
 					rc);
 				goto error_reg_write;
 			}
+
+			if (!led->flash_cfg->strobe_type)
+				led->flash_cfg->trigger_flash &=
+						~FLASH_HW_SW_STROBE_SEL_MASK;
+			else
+				led->flash_cfg->trigger_flash |=
+						FLASH_HW_SW_STROBE_SEL_MASK;
 
 			rc = qpnp_led_masked_write(led,
 				FLASH_LED_STROBE_CTRL(led->base),
@@ -1145,30 +1167,22 @@ static int qpnp_flash_set(struct qpnp_led_data *led)
 			 */
 			usleep(FLASH_RAMP_UP_DELAY_US);
 
-			if (!led->flash_cfg->strobe_type) {
-				rc = qpnp_led_masked_write(led,
-					FLASH_LED_STROBE_CTRL(led->base),
-					led->flash_cfg->trigger_flash,
-					led->flash_cfg->trigger_flash);
-				if (rc) {
-					dev_err(&led->spmi_dev->dev,
-					"LED %d strobe reg write failed(%d)\n",
-					led->id, rc);
-					goto error_flash_set;
-				}
-			} else {
-				rc = qpnp_led_masked_write(led,
-					FLASH_LED_STROBE_CTRL(led->base),
-					(led->flash_cfg->trigger_flash |
-					FLASH_STROBE_HW),
-					(led->flash_cfg->trigger_flash |
-					FLASH_STROBE_HW));
-				if (rc) {
-					dev_err(&led->spmi_dev->dev,
-					"LED %d strobe reg write failed(%d)\n",
-					led->id, rc);
-					goto error_flash_set;
-				}
+			if (!led->flash_cfg->strobe_type)
+				led->flash_cfg->trigger_flash &=
+						~FLASH_HW_SW_STROBE_SEL_MASK;
+			else
+				led->flash_cfg->trigger_flash |=
+						FLASH_HW_SW_STROBE_SEL_MASK;
+
+			rc = qpnp_led_masked_write(led,
+				FLASH_LED_STROBE_CTRL(led->base),
+				led->flash_cfg->trigger_flash,
+				led->flash_cfg->trigger_flash);
+			if (rc) {
+				dev_err(&led->spmi_dev->dev,
+				"LED %d strobe reg write failed(%d)\n",
+				led->id, rc);
+				goto error_flash_set;
 			}
 		}
 	} else {
@@ -1212,6 +1226,7 @@ static int qpnp_flash_set(struct qpnp_led_data *led)
 					dev_err(&led->spmi_dev->dev,
 						"Torch regulator operate failed(%d)\n",
 						rc);
+					mutex_unlock(&hw_led_lock);
 					return rc;
 				}
 			} else if (led->flash_cfg->peripheral_subtype ==
@@ -1221,6 +1236,7 @@ static int qpnp_flash_set(struct qpnp_led_data *led)
 					dev_err(&led->spmi_dev->dev,
 						"Flash regulator operate failed(%d)\n",
 						rc);
+					mutex_unlock(&hw_led_lock);
 					return rc;
 				}
 			}
@@ -1250,13 +1266,14 @@ static int qpnp_flash_set(struct qpnp_led_data *led)
 				dev_err(&led->spmi_dev->dev,
 					"Flash regulator operate failed(%d)\n",
 					rc);
+				mutex_unlock(&hw_led_lock);
 				return rc;
 			}
 		}
 	}
 
 	qpnp_dump_regs(led, flash_debug_regs, ARRAY_SIZE(flash_debug_regs));
-
+	mutex_unlock(&hw_led_lock);
 	return 0;
 
 error_reg_write:
@@ -1268,8 +1285,10 @@ error_torch_set:
 	if (error) {
 		dev_err(&led->spmi_dev->dev,
 			"Torch regulator operate failed(%d)\n", rc);
+		mutex_unlock(&hw_led_lock);
 		return error;
 	}
+	mutex_unlock(&hw_led_lock);
 	return rc;
 
 error_flash_set:
@@ -1277,15 +1296,17 @@ error_flash_set:
 	if (error) {
 		dev_err(&led->spmi_dev->dev,
 			"Flash regulator operate failed(%d)\n", rc);
+		mutex_unlock(&hw_led_lock);
 		return error;
 	}
+	mutex_unlock(&hw_led_lock);
 	return rc;
 }
 
 static int qpnp_kpdbl_set(struct qpnp_led_data *led)
 {
-	int duty_us;
 	int rc;
+	int duty_us, duty_ns, period_us;
 
 	if (led->cdev.brightness) {
 		if (!led->kpdbl_cfg->pwm_cfg->blinking)
@@ -1302,11 +1323,22 @@ static int qpnp_kpdbl_set(struct qpnp_led_data *led)
 		}
 
 		if (led->kpdbl_cfg->pwm_cfg->mode == PWM_MODE) {
-			duty_us = (led->kpdbl_cfg->pwm_cfg->pwm_period_us *
-				led->cdev.brightness) / KPDBL_MAX_LEVEL;
-			rc = pwm_config(led->kpdbl_cfg->pwm_cfg->pwm_dev,
+			period_us = led->kpdbl_cfg->pwm_cfg->pwm_period_us;
+			if (period_us > INT_MAX / NSEC_PER_USEC) {
+				duty_us = (period_us * led->cdev.brightness) /
+					KPDBL_MAX_LEVEL;
+				rc = pwm_config_us(
+					led->kpdbl_cfg->pwm_cfg->pwm_dev,
 					duty_us,
-					led->kpdbl_cfg->pwm_cfg->pwm_period_us);
+					period_us);
+			} else {
+				duty_ns = ((period_us * NSEC_PER_USEC) /
+					KPDBL_MAX_LEVEL) * led->cdev.brightness;
+				rc = pwm_config(
+					led->kpdbl_cfg->pwm_cfg->pwm_dev,
+					duty_ns,
+					period_us * NSEC_PER_USEC);
+			}
 			if (rc < 0) {
 				dev_err(&led->spmi_dev->dev, "pwm config failed\n");
 				return rc;
@@ -1326,8 +1358,8 @@ static int qpnp_kpdbl_set(struct qpnp_led_data *led)
 			led->kpdbl_cfg->pwm_cfg->default_mode;
 
 		if (led->kpdbl_cfg->always_on) {
-			rc = pwm_config(led->kpdbl_cfg->pwm_cfg->pwm_dev, 0,
-					led->kpdbl_cfg->pwm_cfg->pwm_period_us);
+			rc = pwm_config_us(led->kpdbl_cfg->pwm_cfg->pwm_dev, 0,
+				led->kpdbl_cfg->pwm_cfg->pwm_period_us);
 			if (rc < 0) {
 				dev_err(&led->spmi_dev->dev,
 						"pwm config failed\n");
@@ -1365,8 +1397,8 @@ static int qpnp_kpdbl_set(struct qpnp_led_data *led)
 
 static int qpnp_rgb_set(struct qpnp_led_data *led)
 {
-	int duty_us;
 	int rc;
+	int duty_us, duty_ns, period_us;
 
 	if (led->cdev.brightness) {
 #ifdef CONFIG_HUAWEI_KERNEL
@@ -1379,10 +1411,22 @@ static int qpnp_rgb_set(struct qpnp_led_data *led)
 			led->rgb_cfg->pwm_cfg->mode =
 				led->rgb_cfg->pwm_cfg->default_mode;
 		if (led->rgb_cfg->pwm_cfg->mode == PWM_MODE) {
-			duty_us = (led->rgb_cfg->pwm_cfg->pwm_period_us *
-				led->cdev.brightness) / LED_FULL;
-			rc = pwm_config(led->rgb_cfg->pwm_cfg->pwm_dev, duty_us,
-					led->rgb_cfg->pwm_cfg->pwm_period_us);
+			period_us = led->rgb_cfg->pwm_cfg->pwm_period_us;
+			if (period_us > INT_MAX / NSEC_PER_USEC) {
+				duty_us = (period_us * led->cdev.brightness) /
+					LED_FULL;
+				rc = pwm_config_us(
+					led->rgb_cfg->pwm_cfg->pwm_dev,
+					duty_us,
+					period_us);
+			} else {
+				duty_ns = ((period_us * NSEC_PER_USEC) /
+					LED_FULL) * led->cdev.brightness;
+				rc = pwm_config(
+					led->rgb_cfg->pwm_cfg->pwm_dev,
+					duty_ns,
+					period_us * NSEC_PER_USEC);
+			}
 			if (rc < 0) {
 				dev_err(&led->spmi_dev->dev,
 					"pwm config failed\n");
@@ -1686,6 +1730,15 @@ static int __devinit qpnp_wled_init(struct qpnp_led_data *led)
 
 	}
 
+	/* Reset WLED enable register */
+	rc = qpnp_led_masked_write(led, WLED_MOD_CTRL_REG(led->base),
+		WLED_8_BIT_MASK, WLED_BOOST_OFF);
+	if (rc) {
+		dev_err(&led->spmi_dev->dev,
+			"WLED write ctrl reg failed(%d)\n", rc);
+		return rc;
+	}
+
 	/* dump wled registers */
 	qpnp_dump_regs(led, wled_debug_regs, ARRAY_SIZE(wled_debug_regs));
 
@@ -1779,7 +1832,13 @@ static int qpnp_pwm_init(struct pwm_config_data *pwm_cfg,
 				return -EINVAL;
 			}
 			/*enable pwm before pwm look up table configuration*/
-			pwm_enable(pwm_cfg->pwm_dev);
+#ifdef CONFIG_HUAWEI_KERNEL
+			rc = pwm_enable(pwm_cfg->pwm_dev);
+			if (rc < 0) {
+				dev_err(&spmi_dev->dev, "pwm enable failed\n");
+				return rc;
+			}
+#endif
 			rc = pwm_lut_config(pwm_cfg->pwm_dev,
 				PM_PWM_PERIOD_MIN, /* ignored by hardware */
 				pwm_cfg->duty_cycles->duty_pcts,
@@ -2966,7 +3025,7 @@ static int __devinit qpnp_get_config_flash(struct qpnp_led_data *led,
 			led->flash_cfg->enable_module = FLASH_ENABLE_MODULE;
 		} else
 			led->flash_cfg->enable_module = FLASH_ENABLE_ALL;
-		led->flash_cfg->trigger_flash = FLASH_STROBE_SW;
+		led->flash_cfg->trigger_flash = FLASH_TORCH_OUTPUT;
 	}
 
 	rc = of_property_read_u32(node, "qcom,current", &val);
@@ -3470,14 +3529,17 @@ static int __devinit qpnp_leds_probe(struct spmi_device *spmi)
 #ifdef CONFIG_HUAWEI_KERNEL
 		led->max_brightness = RGB_MAX_LEVEL;
 		rc = of_property_read_u32(temp, "huawei,max_brightness", &val);
+		/*if rc = 0,it means that we get the max_brightness successfully*/
+		/*if rc = -EINVAL,it means Invalid argument,the paramter is not read from dtsi,EINVAL is required,
+		    but we dont want to exit pgm,because some products may not have this paramter*/
+		/*only rc != -EINVAL is an wrong case,so we print error info and exit program*/    
 		if ( !rc ) {
 			if (val)
 				led->max_brightness = (u8) val;
 		}
 		else if(rc != -EINVAL) {
-			dev_dbg(&led->spmi_dev->dev,
+			dev_err(&led->spmi_dev->dev,
 				" %s: not able to get max_brightness,rc = %d \n",__func__, rc);
-			goto fail_id_check;
 		}
 
 		led->max_blink_brightness = 64;
@@ -3486,7 +3548,7 @@ static int __devinit qpnp_leds_probe(struct spmi_device *spmi)
 			if (val)
 				led->max_blink_brightness = (u8) val;
 		} else if (rc != -EINVAL) {
-			dev_dbg(&led->spmi_dev->dev,
+			dev_err(&led->spmi_dev->dev,
 				" %s: not able to get max_blink_brightness ,rc = %d \n",__func__, rc);
 			goto fail_id_check;
 		}
@@ -3735,12 +3797,14 @@ static struct spmi_driver qpnp_leds_driver = {
 
 static int __init qpnp_led_init(void)
 {
+	mutex_init(&hw_led_lock);
 	return spmi_driver_register(&qpnp_leds_driver);
 }
 module_init(qpnp_led_init);
 
 static void __exit qpnp_led_exit(void)
 {
+    mutex_destroy(&hw_led_lock);
 	spmi_driver_unregister(&qpnp_leds_driver);
 }
 module_exit(qpnp_led_exit);

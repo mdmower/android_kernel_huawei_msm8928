@@ -31,7 +31,8 @@
 				
 				/* CY_CORE_EWG_TAP_TAP | CY_CORE_EWG_TWO_FINGER_SLIDE */
 				cy,easy_wakeup_gesture = <3>;
-				cy,btn_keys = <102 /* KEY_HOME */
+				/* KEY_HOMEPAGE instead of KEY_HOME(102) */
+				cy,btn_keys = <172 /* KEY_HOME */
 					       139 /* KEY_MENU */
 					       158 /* KEY_BACK */
 					       217 /* KEY_SEARCH */
@@ -81,8 +82,8 @@
 					cy,virtual_keys = /* KeyCode CenterX CenterY Width Height */
 						/* KEY_BACK */
 						<158 120 1340 200 100
-						/* KEY_HOME(102) */
-						102 360 1340 200 100
+						/* KEY_HOMEPAGE instead of KEY_HOME(102) */
+						172 360 1340 200 100
 						/* KEY_MENU */
 						139 600 1340 200 100>;
 						/* KEY SEARCH */

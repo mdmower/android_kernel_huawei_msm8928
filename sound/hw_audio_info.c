@@ -85,7 +85,7 @@ static ssize_t audio_property_show(struct kobject *kobj, struct kobj_attribute *
         /* The size of buf should be one page(PAGE_SIZE), which will be surely 
            enough to hold the string converted from a 32 bit unsigned integer. 
            So omit unnecessary overflow check */
-        return sprintf(buf, "%08X\n", audio_property);
+        return snprintf(buf, PAGE_SIZE, "%08X\n", audio_property);
     }
 
     return 0;

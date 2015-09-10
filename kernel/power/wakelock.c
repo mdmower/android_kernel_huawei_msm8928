@@ -94,6 +94,7 @@ static DEFINE_TIMER(suspend_sys_sync_timer, suspend_sys_sync_handler, 0, 0);
 #define SUSPEND_SYS_SYNC_TIMEOUT (HZ/4)
 static void suspend_sys_sync_handler(unsigned long arg)
 {
+
 	if (suspend_sys_sync_count == 0) {
 		complete(&suspend_sys_sync_comp);
 	} else if (pm_wakeup_pending()) {
@@ -124,6 +125,7 @@ int suspend_sys_sync_wait(void)
 	return 0;
 }
 #endif
+
 
 
 static struct rb_root wakelocks_tree = RB_ROOT;

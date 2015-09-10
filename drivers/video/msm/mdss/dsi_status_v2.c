@@ -1,4 +1,4 @@
-/* Copyright (c) 2013, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2013-2014, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -49,10 +49,10 @@ struct dsi_status_data {
 	struct msm_fb_data_type *mfd;
 	uint32_t check_interval;
 };
-static struct dsi_status_data *pstatus_data;
+struct dsi_status_data *pstatus_data;
 static uint32_t interval = STATUS_CHECK_INTERVAL;
 
-static void check_dsi_ctrl_status(struct work_struct *work)
+void check_dsi_ctrl_status(struct work_struct *work)
 {
 	struct dsi_status_data *pdsi_status = NULL;
 	struct mdss_panel_data *pdata = NULL;
@@ -82,7 +82,19 @@ static void check_dsi_ctrl_status(struct work_struct *work)
 	mdp3_session = pdsi_status->mfd->mdp.private1;
 	mutex_lock(&mdp3_session->lock);
 
-	ret = ctrl_pdata->check_status(ctrl_pdata);
+	if (!mdp3_session->status) {
+		pr_info("display off already\n");
+		mutex_unlock(&mdp3_session->lock);
+		return;
+	}
+
+	if (mdp3_session->wait_for_dma_done)
+		ret = mdp3_session->wait_for_dma_done(mdp3_session);
+
+	if (!ret)
+		ret = ctrl_pdata->check_status(ctrl_pdata);
+	else
+		pr_err("wait_for_dma_done error\n");
 
 	mutex_unlock(&mdp3_session->lock);
 
@@ -140,7 +152,7 @@ int __init mdss_dsi_status_init(void)
 {
 	int rc;
 
-	pstatus_data = kzalloc(sizeof(struct dsi_status_data), GFP_KERNEL);
+	pstatus_data = kzalloc(sizeof(struct dsi_status_data),	GFP_KERNEL);
 	if (!pstatus_data) {
 		pr_err("%s: can't alloc mem\n", __func__);
 		rc = -ENOMEM;

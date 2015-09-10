@@ -30,7 +30,7 @@ static struct msm_sensor_power_setting hw_ov9724_power_setting[] = {
 		.seq_type = SENSOR_VREG,
 		.seq_val = CAM_VDIG,
 		.config_val = 0,
-		.delay = 5,
+		.delay = 0,
 	},
 	{
 		.seq_type = SENSOR_VREG,
@@ -72,7 +72,7 @@ static struct msm_sensor_power_setting hw_ov9724_power_setting[] = {
 		.seq_type = SENSOR_I2C_MUX,
 		.seq_val = 0,
 		.config_val = 0,
-		.delay = 25,
+		.delay = 0,
 	},
 };
 

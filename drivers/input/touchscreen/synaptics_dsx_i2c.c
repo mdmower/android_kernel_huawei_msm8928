@@ -99,6 +99,9 @@ module_param_named(synaptics_dsx_debug_mask, synaptics_dsx_debug_mask, int, 0664
 #define SPECIFIC_LETTER_m 0x6D
 #define SPECIFIC_LETTER_w 0x77
 
+/* For case that need driver to force calibrate TP */
+#define FORCE_TIMEOUT_10MS 10
+#define F54_FORCE_CAL 1<<1
 #define GESTURE_TIMER_INTERVAL  HZ //jiffies 1S
 
 enum synaptics_gesture_num {
@@ -151,6 +154,11 @@ u8 double_tap_zone[DOUBLE_TAP_ZONE_BYTES+1] = {0};
 /* indicate if the easy wakeup process is running */
 static bool easy_wakeup_process = false;
 /* TS2014032708083 shenjinming 20140327 end > */
+/*delay 8s for permitting glove to finger on the edge of TP, when tp resumed*/
+#define DELAY_TIME_ENABLE_EDGE_GLOVE_SWITCH 8000
+#define F51_CTRL_EDGE_GLOVE_OFFSET 20
+static bool edge_glove_switch_process = false;
+static void synaptics_edge_glove_to_finger_delay_work(struct work_struct *work);
 
 #if USE_WAKEUP_GESTURE
 static u32 gesture_count[GESTURE_MAX] = {0};
@@ -607,6 +615,7 @@ static ssize_t synaptics_rmi4_f01_flashprog_show(struct device *dev,
 	unsigned char device_data = 0;
 	unsigned char no_sleep_setting = rmi4_data->no_sleep_setting;
 	unsigned char glove_mode = 0;
+	unsigned char glove_edge_state = 0;
 
 	retval = synaptics_rmi4_i2c_read(rmi4_data,
 			rmi4_data->f11_data_base_addr+F11_2D_DATA28_OFFSET,
@@ -657,14 +666,26 @@ static ssize_t synaptics_rmi4_f01_flashprog_show(struct device *dev,
 	}
 	tp_log_debug("%s: glove_mode=%d", __func__, glove_mode);
 
+	/*To read the register of the glove edge switch, 1: disable, 0: enable*/
+	retval = synaptics_rmi4_i2c_read(rmi4_data,
+			rmi4_data->f51_ctrl_base_addr + F51_CTRL_EDGE_GLOVE_OFFSET,
+			&glove_edge_state,
+			sizeof(glove_edge_state));
+	if (retval < 0) {
+		dev_err(&(rmi4_data->input_dev->dev),
+				"%s: Failed to read glove edge state\n",
+				__func__);
+		return retval;
+	}
 	return snprintf(buf, PAGE_SIZE, "flash_prog=%u\n"
 		"f01_data[0]=%d \n"
 		"f01_data[1]=%d\n"
 		"palm_data=%d\n"
 		"no_sleep_setting=%d\n"
-		"glove_mode=%d\n",
+		"glove_mode=%d\n"
+		"glove_edge_state=%d\n",
 		device_status.flash_prog,
-		data[0],data[1],device_data,no_sleep_setting,glove_mode);
+		data[0],data[1],device_data,no_sleep_setting,glove_mode,glove_edge_state);
 }
 
 static ssize_t synaptics_rmi4_0dbutton_show(struct device *dev,
@@ -837,8 +858,7 @@ static ssize_t synaptics_easy_wakeup_gesture_store(struct device *dev,
 	pm_runtime_put(&rmi4_data->i2c_client->dev);
 	tp_log_debug("%s:line%d , rt_counter=%d\n",__func__,__LINE__, rmi4_data->i2c_client->dev.power.usage_count.counter);
 
-	if (ret < 0)
-		return ret;
+	/* Delete some line */
 
 	return size;
 }
@@ -996,12 +1016,32 @@ static int set_glove_mode(struct synaptics_rmi4_data *rmi4_data,enum syanptics_g
 
 	return 0;
 }
+static int set_edge_glove_state(struct synaptics_rmi4_data *rmi4_data, int edge_glove_state)
+{
+	int ret;
+	unsigned char data = edge_glove_state;
 
+	/*Set glove edge state*/
+	ret = synaptics_rmi4_i2c_write(rmi4_data,
+			rmi4_data->f51_ctrl_base_addr + F51_CTRL_EDGE_GLOVE_OFFSET,
+			&data,
+			sizeof(data));
+	if (ret < 0) {
+		tp_log_err("%s: Failed to set glove edge state=%d!\n",
+				__func__,data);
+		return ret;
+	} else{
+		tp_log_debug("%s: glove edge state is %d!\n",
+				__func__,data);
+	}
+
+	return 0;
+}
 static ssize_t synaptics_glove_func_store(struct device *dev,
 		struct device_attribute *attr, const char *buf, size_t size)
 {
 	struct synaptics_rmi4_data *rmi4_data = dev_get_drvdata(dev);
-	unsigned long value;
+	unsigned long value = 0;
 	int ret;
 
 	ret = kstrtoul(buf, 10, &value);
@@ -1202,6 +1242,66 @@ static ssize_t synaptics_holster_func_show(struct device *dev,
 				synap_holster_info.top_left_y0, synap_holster_info.bottom_right_x1, synap_holster_info.bottom_right_y1);
 }
 
+/*Enable force calibration*/
+static int synaptics_force_cal(struct synaptics_rmi4_data *rmi4_data)
+{
+	int ret = 0;
+	unsigned char value = 0xFF;
+	unsigned char command = 0;
+	unsigned char timeout_count;
+
+	ret = synaptics_rmi4_i2c_read(rmi4_data,
+		rmi4_data->f54_cmd_base_addr,
+		&command,
+		sizeof(command));
+	if (ret < 0) {
+		tp_log_err("%s: Failed to read force cal register!\n",
+				__func__);
+		return ret;
+	}
+
+	/*Setting this bit to '1' requests that a new baseline be taken*/
+	command |= F54_FORCE_CAL;
+
+	ret = synaptics_rmi4_i2c_write(rmi4_data,
+		rmi4_data->f54_cmd_base_addr,
+		&command,
+		sizeof(command));
+	if (ret < 0) {
+		tp_log_err("%s: Failed to write force cal command!\n",
+				__func__);
+		return ret;
+	}
+
+	timeout_count = 0;
+	do {
+		ret = synaptics_rmi4_i2c_read(rmi4_data,
+				rmi4_data->f54_cmd_base_addr,
+				&value,
+				sizeof(value));
+		if (ret < 0) {
+			tp_log_err("%s: Failed to read force cal register!\n",
+					__func__);
+			return ret;
+		}
+
+		/*When the new baseline has been taken , this*/
+		/*command bit will automatically clear to '0'*/
+		if (value == 0x00)
+			break;
+
+		msleep(10);//wait force cal finished
+		timeout_count++;
+	} while (timeout_count < FORCE_TIMEOUT_10MS);
+
+	if (timeout_count == FORCE_TIMEOUT_10MS) {
+		tp_log_err("%s: Timed out waiting for force cal\n",
+				__func__);
+		return -ETIMEDOUT;
+	}
+
+	return 0;
+}
 static ssize_t synaptics_holster_func_store(struct device *dev,
 		struct device_attribute *attr, const char *buf, size_t size)
 {
@@ -1266,6 +1366,13 @@ static ssize_t synaptics_holster_func_store(struct device *dev,
 		}
 		if (ret < 0) {
 			tp_log_err("%s: Failed to set glove mode!ret=%d\n",
+					__func__,ret);
+			goto exit;
+		}
+		/* Force calibrate to clear baseline */
+		ret = synaptics_force_cal(rmi4_data);
+		if (ret < 0) {
+			tp_log_err("%s: Failed to force calibration!ret=%d\n",
 					__func__,ret);
 			goto exit;
 		}
@@ -1439,6 +1546,7 @@ static int add_easy_wakeup_interfaces(struct device *dev)
 				return -ENODEV;
 			}
 		}
+		INIT_DELAYED_WORK(&rmi4_data->glove_delay_work, synaptics_edge_glove_to_finger_delay_work);
 	}
 
 	if(true == rmi4_data->board->holster_supported)
@@ -1464,8 +1572,7 @@ static int add_easy_wakeup_interfaces(struct device *dev)
 static int synaptics_gpio_setup(int gpio, bool configure, int dir, int state)
 {
 	int retval = 0;
-	unsigned char buf[16];
-
+	unsigned char buf[PAGE_SIZE];
 	if (configure) {
 		snprintf(buf, PAGE_SIZE, "dsx_gpio_%u\n", gpio);
 
@@ -2720,7 +2827,7 @@ static void synaptics_rmi4_sensor_report(struct work_struct *work)
 		dev_err(&rmi4_data->i2c_client->dev,
 				"%s: Failed to read interrupt status\n",
 				__func__);
-		return;
+		goto REPORT_ERROR;
 	}
 
 	status.data[0] = data[0];
@@ -2732,7 +2839,7 @@ static void synaptics_rmi4_sensor_report(struct work_struct *work)
 					"%s: Failed to reinit device\n",
 					__func__);
 		}
-		return;
+		goto REPORT_ERROR;
 	}
 
 	/*
@@ -2761,15 +2868,13 @@ static void synaptics_rmi4_sensor_report(struct work_struct *work)
 		}
 	}
 	mutex_unlock(&exp_data.mutex);
-
-#if USE_IRQ_THREAD //huawei 11-25
-#else //huawei 11-25
+REPORT_ERROR:
 	if (rmi4_data->irq_enabled)
 	{
 		tp_log_vdebug("%s:### irq_enabled! ",__func__);
 		enable_irq(rmi4_data->irq);
 	}
-#endif //huawei 11-25
+//delete some line
 	
 	return;
 }
@@ -2788,7 +2893,23 @@ static void synaptics_rmi4_sensor_report_delay_work(struct work_struct *work)
 
 	return;
 }
+ static void synaptics_edge_glove_to_finger_delay_work(struct work_struct *work)
+{
+	int retval = 0;
+	struct synaptics_rmi4_data *rmi4_data = NULL;
+	rmi4_data = container_of(work, struct synaptics_rmi4_data, glove_delay_work.work);
 
+	/*disable glove mode to finger mode on the edge of TP*/
+	retval = set_edge_glove_state(rmi4_data, true);
+	if(retval < 0)
+	{
+		tp_log_err("%s: Failed to disable edge glove state\n",
+		__func__);
+	}
+	edge_glove_switch_process = false;
+
+	return;
+}
  /**
  * synaptics_rmi4_irq()
  *
@@ -2814,6 +2935,7 @@ static irqreturn_t synaptics_rmi4_irq(int irq, void *data)
 		{
 			if( false == easy_wakeup_process )
 			{
+				disable_irq_nosync(irq);
 				/* indicate the easy wakeup process is running */
 				easy_wakeup_process = true;
 				schedule_delayed_work(&rmi4_data->delay_work, msecs_to_jiffies(GENSTRUE_WORK_DELAY));
@@ -2821,6 +2943,7 @@ static irqreturn_t synaptics_rmi4_irq(int irq, void *data)
 		}
 		else
 		{
+			disable_irq_nosync(irq);
 			synaptics_rmi4_sensor_report(rmi4_data);
 		}
 
@@ -4249,7 +4372,7 @@ static int synaptics_rmi4_reset_device(struct synaptics_rmi4_data *rmi4_data)
 	struct synaptics_rmi4_exp_fhandler *exp_fhandler;
 
 	mutex_lock(&(rmi4_data->rmi4_reset_mutex));
-
+	disable_irq_nosync(rmi4_data->irq);
 	rmi4_data->touch_stopped = true;
 
 	retval = synaptics_rmi4_i2c_write(rmi4_data,
@@ -4260,6 +4383,7 @@ static int synaptics_rmi4_reset_device(struct synaptics_rmi4_data *rmi4_data)
 		dev_err(&rmi4_data->i2c_client->dev,
 				"%s: Failed to issue reset command, error = %d\n",
 				__func__, retval);
+		enable_irq(rmi4_data->irq);
 		mutex_unlock(&(rmi4_data->rmi4_reset_mutex));
 		return retval;
 	}
@@ -4275,6 +4399,7 @@ static int synaptics_rmi4_reset_device(struct synaptics_rmi4_data *rmi4_data)
 		dev_err(&rmi4_data->i2c_client->dev,
 				"%s: Failed to query device\n",
 				__func__);
+		enable_irq(rmi4_data->irq);
 		mutex_unlock(&(rmi4_data->rmi4_reset_mutex));
 		return retval;
 	}
@@ -4300,7 +4425,7 @@ static int synaptics_rmi4_reset_device(struct synaptics_rmi4_data *rmi4_data)
 	mutex_unlock(&exp_data.mutex);
 
 	rmi4_data->touch_stopped = false;
-
+	enable_irq(rmi4_data->irq);
 	mutex_unlock(&(rmi4_data->rmi4_reset_mutex));
 
 	return 0;
@@ -4637,6 +4762,7 @@ static void synaptics_print_dtsi_info(struct synaptics_dsx_platform_data *pdata)
 	tp_log_debug("synaptics,glove_enabled=%d\n", pdata->glove_enabled);
 	tp_log_debug("synaptics,fast_relax_gesture=%d\n", pdata->fast_relax_gesture);
 	tp_log_debug("synaptics,pdata->holster_supported=%d\n", pdata->holster_supported);
+	tp_log_debug("synaptics,glove_edge_switch_supported=%d\n", pdata->glove_edge_switch_supported);
 }
 
 static int synaptics_rmi4_parse_dt(struct device *dev, struct synaptics_dsx_platform_data *pdata)
@@ -4659,7 +4785,8 @@ static int synaptics_rmi4_parse_dt(struct device *dev, struct synaptics_dsx_plat
 
 	/* reset, irq gpio info */
 	pdata->irq_gpio = of_get_named_gpio_flags(np, "synaptics,irq-gpio", 0, NULL);
-	pdata->irq_flags = IRQF_TRIGGER_FALLING | IRQF_ONESHOT;
+	/*exchanged to low trigger*/
+	pdata->irq_flags = IRQF_TRIGGER_LOW | IRQF_ONESHOT;
 
 	if (of_find_property(np, "synaptics,reset-gpio", NULL)) {
 		pdata->reset_gpio = of_get_named_gpio_flags(np, "synaptics,reset-gpio",
@@ -4738,6 +4865,7 @@ static int synaptics_rmi4_parse_dt(struct device *dev, struct synaptics_dsx_plat
 	pdata->fast_relax_gesture = get_of_u32_val(np, "synaptics,fast_relax_gesture", 0);
 
 	pdata->holster_supported = (bool)get_of_u32_val(np, "synaptics,holster_supported", 0);
+	pdata->glove_edge_switch_supported= (bool)get_of_u32_val(np, "synaptics,glove_edge_switch_supported", 0);
 
 	/*DEBUG: print tp dtsi info*/
 	synaptics_print_dtsi_info(pdata);
@@ -4753,7 +4881,7 @@ static int synaptics_rmi4_parse_dt(struct device *dev, struct synaptics_dsx_plat
 #ifdef CONFIG_HUAWEI_KERNEL
  static int synaptics_rmi4_power_on(struct device *dev)
  {
-	 char const *power_pin_vdd;
+	 char const *power_pin_vdd = NULL;
 	 char const *power_pin_vbus;
 	 struct regulator *vdd_synaptics;
 	 struct regulator *vbus_synaptics;
@@ -5166,7 +5294,7 @@ err_regulator:
 	free_wakeup_keys(platform_data->wakeup_keys);
 	kfree(rmi4_data);
 	if (client->dev.of_node) {
-		if (!platform_data) {
+		if (platform_data) {
 			devm_kfree(&client->dev, platform_data);
 		}
 	}
@@ -5866,6 +5994,7 @@ static int synaptics_rmi4_rt_suspend(struct device *dev)
 {
 	struct synaptics_rmi4_exp_fhandler *exp_fhandler;
 	struct synaptics_rmi4_data *rmi4_data = dev_get_drvdata(dev);
+	int retval = 0;
 
 	tp_log_info("%s: in \n",__func__);
 	if (rmi4_data->staying_awake)
@@ -5874,6 +6003,19 @@ static int synaptics_rmi4_rt_suspend(struct device *dev)
 	if (!rmi4_data->sensor_sleep) {
 		rmi4_data->touch_stopped = true;
 		synaptics_rmi4_irq_enable(rmi4_data, false);
+		/**
+		 * if product is G760 and glove state switch of edge is running ,
+		 * we need to cancel the delayed work for tp suspend
+		 * and set the glove state process of edge for false
+		 */
+		if((true == rmi4_data->board->glove_edge_switch_supported)&&(true == edge_glove_switch_process))
+		{
+			retval = cancel_delayed_work_sync(&rmi4_data->glove_delay_work);
+			if(retval < 0){
+				tp_log_err("%s %d: failed to cancel delayed work sync retval = %d\n", __func__, __LINE__, retval);
+			}
+			edge_glove_switch_process = false;
+		}
 #if USE_WAKEUP_GESTURE
 		synaptics_put_device_into_sleep(dev,rmi4_data);
 #else
@@ -5945,6 +6087,28 @@ static int synaptics_rmi4_rt_resume(struct device *dev)
 		{
 			/*TP will response to finger and glove,with finger default*/
 			retval = set_glove_mode(rmi4_data,SYSTEM_START_IN_SKIN_MODE);
+			/**
+			 * if product is G760 and glove state switch of edge is not running ,
+			 * we need to enable glove mode to finger mode on the edge of TP
+			 * and schedule a delayed work
+			 */
+			if((true == rmi4_data->board->glove_edge_switch_supported)&&(false == edge_glove_switch_process))
+			{
+				tp_log_info("%s: product name = %s.\n", __func__,
+					rmi4_data->board->product_name);
+				/*enable glove mode to finger mode on the edge of TP*/
+				retval = set_edge_glove_state(rmi4_data, false);
+				if(retval < 0)
+				{
+					tp_log_err("%s: Failed to enable edge glove state\n",
+					__func__);
+				}
+				else
+				{
+					edge_glove_switch_process = true;
+					schedule_delayed_work(&rmi4_data->glove_delay_work, msecs_to_jiffies(DELAY_TIME_ENABLE_EDGE_GLOVE_SWITCH));
+				}
+			}
 		}
 	}
 

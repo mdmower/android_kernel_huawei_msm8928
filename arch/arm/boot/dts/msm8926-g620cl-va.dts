@@ -22,7 +22,7 @@
 / {
 	model = "Qualcomm MSM 8926 CDP g620cl";
 	compatible = "qcom,msm8926-cdp", "qcom,msm8926", "qcom,cdp";
-	qcom,board-id = <8081 0>;
+	qcom,msm-id = <200 8081 0>;
 };
 
 

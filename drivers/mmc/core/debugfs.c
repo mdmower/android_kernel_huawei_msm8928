@@ -29,6 +29,15 @@
 #define DHCF_PASSWORD 0x00175063
 #endif
 
+#ifdef CONFIG_HUAWEI_KERNEL
+/* Enum of power state */
+enum sd_type {
+    SDHC = 0,
+    SDXC,
+};
+#endif
+
+
 #include "core.h"
 #include "mmc_ops.h"
 
@@ -239,6 +248,25 @@ out:
 
 DEFINE_SIMPLE_ATTRIBUTE(mmc_max_clock_fops, mmc_max_clock_get,
 		mmc_max_clock_set, "%llu\n");
+
+#ifdef CONFIG_HUAWEI_KERNEL
+static int mmc_sdxc_opt_get(void *data, u64 *val)
+{
+	struct mmc_card	*card = data;
+
+	if (mmc_card_ext_capacity(card))
+	{
+		*val = SDXC;
+		printk(KERN_INFO "sd card SDXC type is detected\n");
+		return 0;
+	}
+	*val = SDHC;
+	printk(KERN_INFO "sd card SDHC type is detected\n");
+	return 0;
+}
+DEFINE_SIMPLE_ATTRIBUTE(mmc_sdxc_fops, mmc_sdxc_opt_get,
+			NULL, "%llu\n");
+#endif
 
 void mmc_add_host_debugfs(struct mmc_host *host)
 {
@@ -905,20 +933,33 @@ static const struct file_operations mmc_dbg_health_st_fops = {
 void mmc_add_card_debugfs(struct mmc_card *card)
 {
 	struct mmc_host	*host = card->host;
-	struct dentry	*root;
-
+	struct dentry	*root = NULL;
+#ifdef CONFIG_HUAWEI_KERNEL
+	struct dentry   *sdxc_root = NULL;
+#endif
 	if (!host->debugfs_root)
 		return;
 
+#ifdef CONFIG_HUAWEI_KERNEL
+	sdxc_root = debugfs_create_dir("sdxc_root", host->debugfs_root);
+	if (IS_ERR(sdxc_root))
+		return;
+	if (!sdxc_root)
+		goto err;
+#endif
+		
 	root = debugfs_create_dir(mmc_card_id(card), host->debugfs_root);
 	if (IS_ERR(root))
 		/* Don't complain -- debugfs just isn't enabled */
-		return;
+		goto err;
 	if (!root)
 		/* Complain -- debugfs is enabled, but it failed to
 		 * create the directory. */
 		goto err;
 
+#ifdef CONFIG_HUAWEI_KERNEL
+	card->debugfs_sdxc = sdxc_root;
+#endif
 	card->debugfs_root = root;
 
 	if (!debugfs_create_x32("state", S_IRUSR, root, &card->state))
@@ -967,15 +1008,36 @@ void mmc_add_card_debugfs(struct mmc_card *card)
     }
 #endif
 
+#ifdef CONFIG_HUAWEI_KERNEL
+	if (mmc_card_sd(card))
+		if (!debugfs_create_file("sdxc", S_IRUSR, sdxc_root, card,
+					&mmc_sdxc_fops))
+			goto err;
+#endif
+	
 	return;
 
 err:
-	debugfs_remove_recursive(root);
+	if (root)
+	{
+		debugfs_remove_recursive(root);
+	}
 	card->debugfs_root = NULL;
+#ifdef CONFIG_HUAWEI_KERNEL
+	if(sdxc_root)
+	{
+		debugfs_remove_recursive(sdxc_root);
+	}
+	card->debugfs_sdxc = NULL;
+#endif
+
 	dev_err(&card->dev, "failed to initialize debugfs\n");
 }
 
 void mmc_remove_card_debugfs(struct mmc_card *card)
 {
 	debugfs_remove_recursive(card->debugfs_root);
+#ifdef CONFIG_HUAWEI_KERNEL	
+	debugfs_remove_recursive(card->debugfs_sdxc);
+#endif
 }

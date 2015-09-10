@@ -94,7 +94,7 @@ static int hw_mt9d015_match_module(struct msm_sensor_ctrl_t *s_ctrl)
     if(s_ctrl && s_ctrl->sensordata && s_ctrl->sensordata->sensor_info && s_ctrl->sensordata->sensor_info->sensor_project_name)
     {
     	s_ctrl->sensordata->sensor_name = "hw_mt9d015_sunny";
-        memcpy(s_ctrl->sensordata->sensor_info->sensor_project_name, "23060157FF-MT-S", MAX_SENSOR_NAME-1);
+        memcpy(s_ctrl->sensordata->sensor_info->sensor_project_name, "23060157FF-MT-F", MAX_SENSOR_NAME-1);
     }
     return 0;
 }

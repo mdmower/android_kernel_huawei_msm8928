@@ -376,7 +376,8 @@ int of_batterydata_read_data(struct device_node *batterydata_container_node,
 	{
 		if(!done)
 		{
-			app_info_set("battery_name","Unknow battery");
+			/*correct the battery_name when battery is unknown*/
+			app_info_set("battery_name","Unknown battery");
 			done = 1;
 		}
 		pr_err("No battery data found\n");

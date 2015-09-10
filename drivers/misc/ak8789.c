@@ -49,7 +49,7 @@
 #ifdef CONFIG_HUAWEI_HW_DEV_DCT
 #include <linux/hw_dev_dec.h>
 #endif
-
+#include <misc/app_info.h>
 /*prevent shake time is AKM8789_TIMER_DEBOUNCE*/
 /*AKM8789_WAKEUP_TIME is for wake_lock_timeout()*/
 /*change the debounce time from 20ms to 50ms to prevent unnecessary problems because the wrong hall event reprot*/
@@ -75,11 +75,10 @@
 #define WAKE_FLAG_LEFT_SOUTH IRQF_TRIGGER_NONE
 
 /*hall value*/
-#define HALL_VALUE_LEFT_NORTH	(1<<0)
+#define HALL_VALUE_LEFT_NORTH	(1<<1)
 #define HALL_VALUE_LEFT_SOUTH	(1<<2)
-#define HALL_VALUE_RIGHT_NORTH	(1<<1)
+#define HALL_VALUE_RIGHT_NORTH	(1<<0)
 #define HALL_VALUE_RIGHT_SOUTH	(1<<3)
-
 /*the level to print log of ak8789, default level is just to print info log*/
 #define AK8789_LOG_FLOW 4
 #define AK8789_LOG_INFO 3
@@ -552,8 +551,64 @@ int hall_pf_probe(struct platform_device *pdev)
 	}
 	case TWO_POLE:
 	{
-		AK8789_ERRMSG("2 poles function is not supported%d\n",err);
-		return -ENXIO;
+/*delete 107 & 108 GPIO*/
+		AK8789_FLOWMSG("%s,%d, ak8789 entry case two pole \n",__func__,__LINE__);
+		hw_hall_dev.gpio_data = kzalloc(sizeof(*hw_hall_dev.gpio_data)*used_type, GFP_KERNEL);
+		if (IS_ERR(hw_hall_dev.gpio_data)){
+			AK8789_ERRMSG("kzalloc err\n");
+			return PTR_ERR(hw_hall_dev.gpio_data);
+		}
+		gpio_ptr = hw_hall_dev.gpio_data;
+		
+		/*RightNorth*/
+		temp_val = of_get_named_gpio(pdev->dev.of_node,GPIO_CONFIG_RIGHT_NORTH,0);
+		AK8789_FLOWMSG("%s,%d,ak8789 temp_val=%d \n",__func__,__LINE__,temp_val);
+		if (!gpio_is_valid(temp_val)) {
+		AK8789_ERRMSG("%s,%d,Unable to read ak8789 irq gpio\n",__func__,__LINE__);
+		err = temp_val;
+		goto gpio_rn_err;
+		} else {
+		gpio = temp_val;
+		AK8789_FLOWMSG("%s,%d,ak8789 irq gpio=%d \n",__func__,__LINE__,gpio);
+		}
+
+		gpio_ptr->gpio = gpio;
+		gpio_ptr->wake_up = WAKE_FLAG_RIGHT_NORTH;
+		gpio_ptr->name = kzalloc(sizeof(HALL_RN_INTERRUPT), GFP_KERNEL);
+		if (IS_ERR(gpio_ptr->name)){
+			AK8789_ERRMSG("%s,%d,kzalloc  hall_gpio_config_rn err\n",__func__,__LINE__);
+			err =  PTR_ERR(hw_hall_dev.gpio_data);
+			goto rn_mem;
+		}
+		memcpy(gpio_ptr->name, HALL_RN_INTERRUPT, sizeof(HALL_RN_INTERRUPT));
+		gpio_ptr->hall_value = HALL_VALUE_RIGHT_NORTH;
+		
+		/*RightSouth*/
+		gpio_ptr++;
+		temp_val = of_get_named_gpio(pdev->dev.of_node,GPIO_CONFIG_RIGHT_SOUTH, 0);
+		AK8789_FLOWMSG("%s,%d ak8789 temp_val=%d \n",__func__,__LINE__,temp_val);
+		if (!gpio_is_valid(temp_val)) {
+			AK8789_ERRMSG("%s,%d,Unable to read ak8789 irq gpio\n",__func__,__LINE__);
+			err = temp_val;
+			goto gpio_rs_err;
+		} else {
+			gpio = temp_val;
+			AK8789_FLOWMSG("%s,%d,ak8789 irq gpio=%d \n",__func__,__LINE__,gpio);
+		}
+
+		gpio_ptr->gpio = gpio;
+		gpio_ptr->wake_up = WAKE_FLAG_RIGHT_SOUTH;
+		gpio_ptr->name = kzalloc(sizeof(HALL_RS_INTERRUPT), GFP_KERNEL);
+		if (IS_ERR(gpio_ptr->name)){
+			AK8789_ERRMSG("%s,%d,kzalloc  hall_gpio_config_rn err\n",__func__,__LINE__);
+			err =  PTR_ERR(hw_hall_dev.gpio_data);
+			goto rs_mem;
+		}
+		memcpy(gpio_ptr->name, HALL_RS_INTERRUPT, sizeof(HALL_RS_INTERRUPT));
+		gpio_ptr->hall_value = HALL_VALUE_RIGHT_SOUTH;
+		
+		break;
+		
 	}
 	default:
 	{
@@ -599,7 +654,12 @@ int hall_pf_probe(struct platform_device *pdev)
 	ret = hall_gpio_irq_setup();
 	
 	device_init_wakeup(&pdev->dev, true);
-	
+	/* set app info */
+	ret = app_info_set("Hall", "akm8789");
+	if (ret < 0) 
+	{
+		AK8789_ERRMSG("%s(line %d): app_info_set error,ret=%d\n",__func__,__LINE__,ret);
+	}
 	return err;
 
 wq_fail:

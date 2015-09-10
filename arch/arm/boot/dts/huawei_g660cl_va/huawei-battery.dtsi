@@ -19,7 +19,5 @@
 	qcom,vddsafe-mv = <4380>;
 	qcom,tchg-mins = <512>;
 	qcom,battery-data = <&qrd_batterydata>;
-	qcom,batt-hot-percentage = <25>;
-	qcom,batt-cold-percentage = <80>;
 };
 /*remove redundant node*/

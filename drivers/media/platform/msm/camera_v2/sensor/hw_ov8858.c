@@ -166,7 +166,7 @@ static struct msm_sensor_power_setting ov8858_foxconn_power_setting[] = {
 		.seq_type = SENSOR_I2C_MUX,
 		.seq_val = 0,
 		.config_val = 0,
-		.delay = 25,
+		.delay = 0,
 	},
 };
 

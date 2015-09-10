@@ -1066,6 +1066,8 @@ static ssize_t smem_log_write(struct file *fp, const char __user *buf,
 	locbuf[count] = '\0';
 
 	ret = copy_from_user(locbuf, buf, count);
+	/* coverity 190764 */
+	locbuf[count] = '\0';
 	if (ret != 0) {
 		printk(KERN_ERR "ERROR: %s could not copy %i bytes\n",
 		       __func__, ret);

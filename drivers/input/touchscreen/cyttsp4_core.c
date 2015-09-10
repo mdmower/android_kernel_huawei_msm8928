@@ -1522,11 +1522,11 @@ static int cyttsp4_unsubscribe_attention_(struct cyttsp4_device *ttsp,
 		if (atten->ttsp == ttsp && atten->mode == mode) {
 			list_del(&atten->node);
 			spin_unlock(&cd->spinlock);
-			kfree(atten);
 			tp_log_debug( "%s: %s=%p %s=%d\n",
 				__func__,
 				"unsub for atten->ttsp", atten->ttsp,
-				"atten->mode", atten->mode);
+				"atten->mode", atten->mode);						
+			kfree(atten);
 			return 0;
 		}
 	}
@@ -1942,7 +1942,7 @@ static int _cyttsp4_exec_cmd(struct cyttsp4_core_data *cd, u8 mode,
 {
 	int cmd_ofs;
 	int cmd_param_ofs;
-	u8 command;
+	u8 command = 0;
 	u8 *cmd_param_buf;
 	size_t cmd_param_size;
 	int rc;
@@ -2070,7 +2070,7 @@ static int cyttsp4_get_parameter(struct cyttsp4_core_data *cd, u8 param_id,
 		u32 *param_value)
 {
 	u8 command_buf[CY_CMD_OP_GET_PARAM_CMD_SZ];
-	u8 return_buf[CY_CMD_OP_GET_PARAM_RET_SZ];
+	u8 return_buf[CY_CMD_OP_GET_PARAM_RET_SZ] = {0};
 	u8 param_size;
 	u8 *value_buf;
 	int rc;
@@ -2107,7 +2107,7 @@ static int cyttsp4_set_parameter(struct cyttsp4_core_data *cd, u8 param_id,
 		u8 param_size, u32 param_value)
 {
 	u8 command_buf[CY_CMD_OP_SET_PARAM_CMD_SZ];
-	u8 return_buf[CY_CMD_OP_SET_PARAM_RET_SZ];
+	u8 return_buf[CY_CMD_OP_SET_PARAM_RET_SZ] = {0};
 	int rc;
 
 	command_buf[0] = CY_CMD_OP_SET_PARA;
@@ -2309,7 +2309,7 @@ exit:
 static int cyttsp4_write_config_block(struct cyttsp4_core_data *cd, u8 ebid,
 		u16 row, const u8 *data, u16 length)
 {
-	u8 return_buf[CY_CMD_CAT_WRITE_CFG_BLK_RET_SZ];
+	u8 return_buf[CY_CMD_CAT_WRITE_CFG_BLK_RET_SZ] = {0};
 	u8 *command_buf;
 	int command_buf_sz;
 	u16 crc;
@@ -2415,7 +2415,7 @@ static int cyttsp4_verify_config_block_crc(struct cyttsp4_core_data *cd,
 		u8 ebid, u16 *calc_crc, u16 *stored_crc, bool *match)
 {
 	u8 command_buf[CY_CMD_CAT_VERIFY_CFG_BLK_CRC_CMD_SZ];
-	u8 return_buf[CY_CMD_CAT_VERIFY_CFG_BLK_CRC_RET_SZ];
+	u8 return_buf[CY_CMD_CAT_VERIFY_CFG_BLK_CRC_RET_SZ] = {0};
 	int rc;
 
 	command_buf[0] = CY_CMD_CAT_VERIFY_CFG_BLK_CRC;
@@ -2443,7 +2443,7 @@ static int cyttsp4_get_config_block_crc(struct cyttsp4_core_data *cd,
 		u8 ebid, u16 *crc)
 {
 	u8 command_buf[CY_CMD_OP_GET_CFG_BLK_CRC_CMD_SZ];
-	u8 return_buf[CY_CMD_OP_GET_CFG_BLK_CRC_RET_SZ];
+	u8 return_buf[CY_CMD_OP_GET_CFG_BLK_CRC_RET_SZ] = {0};
 	int rc;
 
 	command_buf[0] = CY_CMD_OP_GET_CRC;
@@ -3310,7 +3310,7 @@ reset:
 
 	rc = cyttsp4_wait_sysinfo_mode(cd);
 	if (rc < 0) {
-		u8 buf[sizeof(ldr_err_app)];
+		u8 buf[sizeof(ldr_err_app)] = {0};
 		int rc1;
 
 		/* Check for invalid/corrupted touch application */
@@ -3942,7 +3942,7 @@ static ssize_t cyttsp4_signal_disparity_show(struct device *dev,
 {
 	struct cyttsp4_core_data *cd = dev_get_drvdata(dev);
 	u8 cmd_buf[CY_CMD_OP_GET_PARAM_CMD_SZ];
-	u8 return_buf[CY_CMD_OP_GET_PARAM_RET_SZ];
+	u8 return_buf[CY_CMD_OP_GET_PARAM_RET_SZ] = {0};
 	int rc;
 
 	cmd_buf[0] = CY_CMD_OP_GET_PARA;
@@ -4076,7 +4076,7 @@ static ssize_t holster_set_sensitivity_show(struct device *dev,
 {
 	struct cyttsp4_core_data *cd = dev_get_drvdata(dev);
 	u8 cmd_buf[CY_CMD_OP_GET_PARAM_CMD_SZ];
-	u8 return_buf[CY_CMD_OP_GET_PARAM_RET_SZ];
+	u8 return_buf[CY_CMD_OP_GET_PARAM_RET_SZ] = {0};
 	int rc;
 
 	cmd_buf[0] = CY_CMD_OP_GET_PARA;
@@ -4142,7 +4142,6 @@ static ssize_t  holster_set_sensitivity_store(struct device *dev,
 		rc = -EINVAL;
 		goto exit;
 	}
-
 	if(0 == cover_mode_val)
 		cover_mode_val = 2;//value 2 will close this feature
 	holster_status = cover_mode_val;
@@ -4166,7 +4165,6 @@ static ssize_t  holster_set_sensitivity_store(struct device *dev,
 		goto exit;
 	}
 	mutex_unlock(&cd->system_lock);
-
 
 	pm_runtime_get_sync(dev);
 
@@ -4250,7 +4248,7 @@ static ssize_t cyttsp4_finger_threshold_show(struct device *dev,
 {
 	struct cyttsp4_core_data *cd = dev_get_drvdata(dev);
 	u8 cmd_buf[CY_CMD_OP_GET_PARAM_CMD_SZ];
-	u8 return_buf[CY_CMD_OP_GET_PARAM_RET_SZ];
+	u8 return_buf[CY_CMD_OP_GET_PARAM_RET_SZ] = {0};
 	u8 finger_threshold_h, finger_threshold_l;
 	int rc;
 

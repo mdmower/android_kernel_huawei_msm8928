@@ -39,7 +39,22 @@
     /*
      *  Frame buffer device initialization and setup routines
      */
+#ifdef CONFIG_HUAWEI_LCD
+extern int lcd_debug_mask ;
 
+#define LCD_INFO 2
+
+#ifndef LCD_LOG_INFO
+#define LCD_LOG_INFO( x...)					\
+do{											\
+	if( lcd_debug_mask >= LCD_INFO )		\
+	{										\
+		printk(KERN_ERR "[LCD_INFO] " x);	\
+	}										\
+											\
+}while(0)
+#endif
+#endif
 #define FBPIXMAPSIZE	(1024 * 8)
 
 static DEFINE_MUTEX(registration_lock);
@@ -1042,11 +1057,14 @@ fb_set_var(struct fb_info *info, struct fb_var_screeninfo *var)
  done:
 	return ret;
 }
-
 int
 fb_blank(struct fb_info *info, int blank)
 {	
  	int ret = -EINVAL;
+
+#ifdef CONFIG_HUAWEI_LCD
+	LCD_LOG_INFO("Enter %s, blank_mode = [%d].\n",__func__,blank);
+#endif
 
  	if (blank > FB_BLANK_POWERDOWN)
  		blank = FB_BLANK_POWERDOWN;
@@ -1061,10 +1079,13 @@ fb_blank(struct fb_info *info, int blank)
 		event.data = &blank;
 		fb_notifier_call_chain(FB_EVENT_BLANK, &event);
 	}
+#ifdef CONFIG_HUAWEI_LCD
+	LCD_LOG_INFO("Exit %s, blank_mode = [%d].\n",__func__,blank);
+#endif
+	
 
  	return ret;
 }
-
 static long do_fb_ioctl(struct fb_info *info, unsigned int cmd,
 			unsigned long arg)
 {

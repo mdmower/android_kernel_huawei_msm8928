@@ -8,7 +8,7 @@
         builtin-2nd-mic-exist;
         hand_held_dual_mic_strategy;
         status = "ok";
-        aud_param_ver = "G6L33_audio_C02";
+        aud_param_ver = "G6L11_audio_C05";
         product-btsco-nrec-adapt;
         loud_speaker_master_mic_strategy;
     };

@@ -2355,7 +2355,6 @@ extern void inode_sb_list_add(struct inode *inode);
 
 #ifdef CONFIG_BLOCK
 /* Delete several lines */
-
 extern void submit_bio(int, struct bio *);
 extern int bdev_read_only(struct block_device *);
 #endif

@@ -110,6 +110,9 @@ EXPORT_SYMBOL(boot_reason);
 unsigned int cold_boot;
 EXPORT_SYMBOL(cold_boot);
 
+char* (*arch_read_hardware_id)(void);
+EXPORT_SYMBOL(arch_read_hardware_id);
+
 #ifdef MULTI_CPU
 struct processor processor __read_mostly;
 #endif
@@ -989,36 +992,9 @@ static int __init meminfo_cmp(const void *_a, const void *_b)
 	return cmp < 0 ? -1 : cmp > 0 ? 1 : 0;
 }
 
-static int __init dt_scan_for_machine_name(unsigned long node, const char *uname,
-		int depth, void *data)
-{
-	char *name;
-	int ret;
-	unsigned long length;
- 
-        ret = of_flat_dt_is_compatible(node, "huawei,hw_machine_name");
-	if( !ret )
-	{
-		/*printk(KERN_ALERT "huawei,hw_machine_name is null\n");*/
-		return 0;
-	}
-	
-	name = of_get_flat_dt_prop(node, "machine_name",&length);
-	if( !name || !length )
-	{
-		/*printk(KERN_ALERT "machine_name is null\n");*/
-		return 0;
-	}
-	
-	*(unsigned long *)data = (unsigned long)name;
-
-	return 1;
-}
-
 void __init setup_arch(char **cmdline_p)
 {
 	struct machine_desc *mdesc;
-	unsigned long machine_name_addr=0;
 
 	setup_processor();
 	mdesc = setup_machine_fdt(__atags_pointer);
@@ -1026,9 +1002,6 @@ void __init setup_arch(char **cmdline_p)
 		mdesc = setup_machine_tags(machine_arch_type);
 	machine_desc = mdesc;
 	machine_name = mdesc->name;
-	of_scan_flat_dt(dt_scan_for_machine_name, &machine_name_addr);
-	if(machine_name_addr)       
-		machine_name = (const char*)machine_name_addr; 
 
 	setup_dma_zone(mdesc);
 
@@ -1193,7 +1166,10 @@ static int c_show(struct seq_file *m, void *v)
 
 	seq_puts(m, "\n");
 
-	seq_printf(m, "Hardware\t: %s\n", machine_name);
+	if (!arch_read_hardware_id)
+		seq_printf(m, "Hardware\t: %s\n", machine_name);
+	else
+		seq_printf(m, "Hardware\t: %s\n", arch_read_hardware_id());
 	seq_printf(m, "Revision\t: %04x\n", system_rev);
 	seq_printf(m, "Serial\t\t: %08x%08x\n",
 		   system_serial_high, system_serial_low);

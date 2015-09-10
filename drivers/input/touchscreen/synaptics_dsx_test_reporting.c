@@ -3823,6 +3823,9 @@ static int get_product_module_name(unsigned char *product_id)
 		product_module_name = FW_TRULY;
 	else if (!strcmp(product_id, FW_JUNDA_STR))
 		product_module_name = FW_JUNDA;
+/* tp auto check add lens */
+	else if (!strcmp(product_id, FW_LENSONE_STR))
+		product_module_name = FW_LENSONE;
 	else
 		product_module_name = UNKNOW_PRODUCT_MODULE;
 
@@ -3948,6 +3951,7 @@ static void synaptics_rmi4_f54_default_cap_limit(void)
 
 	return;
 error:
+	tp_log_err("%s:synaptics_rmi4_f54_default_cap_limit fail,kmalloc fail\n",__func__);
 	synaptics_rmi4_f54_release_cap_limit();
 	return;
 }
@@ -3978,9 +3982,10 @@ void get_f54_get_cap_limit(struct device *dev,char *product_id,u16 ic_type)
 	if (product_module_name == UNKNOW_PRODUCT_MODULE) {
 		tp_log_err("%s: not able to get module name = %d\n",
 					__func__,product_module_name);
+/* use default */
 		goto error;
 	}
-
+	dev_node= of_find_node_by_name(np, "huawei,ofilm");
 	/*To find the capacitancecapacitance node by the node name if ic type is 3207*/
 	if (IC_TYPE_3207 == ic_type) {
 		switch(product_module_name) {
@@ -3995,6 +4000,10 @@ void get_f54_get_cap_limit(struct device *dev,char *product_id,u16 ic_type)
 			break;
 		case FW_EELY:
 			dev_node= of_find_node_by_name(np, "huawei,eely");
+			break;			
+/* tp auto check add lens */
+		case FW_LENSONE:
+			dev_node= of_find_node_by_name(np, "huawei,ofilm");
 			break;			
 		default:
 			tp_log_err("%s: got failed,use default!\n",__func__);

@@ -402,28 +402,27 @@ static ssize_t lcd_reg_dbg_mipi_write(
 		}
 
 		/* error */
-		default:
-		{
-			LCD_LOG_ERR("%s, op type not support!\n", __func__);
-			ret = -1;
-			break;
-		}
+//		default:
+//		{
+//			LCD_LOG_ERR("%s, op type not support!\n", __func__);
+//			ret = -1;
+//			break;
+// 		}
 	}
 
 	/* finish */
-	if (ret)
-	{
-		LCD_LOG_ERR("%s, fail\n", __func__);
-		goto err_handle;
-	}
-	else
-	{
+//	if (ret)
+//	{
+//		LCD_LOG_ERR("%s, fail\n", __func__);
+//		goto err_handle;
+//	}
+//	else
+//	{
 		return count;
-	}
+//	}
 err_handle:
 	return -EFAULT;
 }
-
 /* fops of lcd_reg_dbg_mipi */
 static const struct file_operations lcd_reg_dbg_mipi_fops = {
 	.open = lcd_reg_dbg_mipi_open,

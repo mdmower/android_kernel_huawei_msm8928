@@ -98,8 +98,6 @@ static char touch_info[50] = {0};
 
 #define MIN_SLEEP_TIME_US 50
 #define MAX_SLEEP_TIME_US 100
-/*probability of fw update request fail*/
-#define SYN_FW_RETRY_TIMES 2
 
 static ssize_t fwu_sysfs_show_image(struct file *data_file,
 		struct kobject *kobj, struct bin_attribute *attributes,
@@ -1415,8 +1413,6 @@ static int fwu_start_reflash(void)
 	struct f01_device_status f01_device_status;
 	const unsigned char *fw_image;
 	const struct firmware *fw_entry = NULL;
-	/*probability of fw update request fail*/
-	unsigned char retry;
 
 	tp_log_info("%s(line %d)",__func__,__LINE__);
 	if (fwu->rmi4_data->sensor_sleep) {
@@ -1442,28 +1438,12 @@ static int fwu_start_reflash(void)
 				"Requesting firmware image %s\n",
 				__func__,__LINE__, fwu->image_name);
 
-		/*probability of fw update request fail*/
-		for (retry = 0; retry < SYN_FW_RETRY_TIMES; retry++) {
-			retval = request_firmware(&fw_entry, fwu->image_name,
-					&fwu->rmi4_data->i2c_client->dev);
-			if (retval != 0) {
-				tp_log_err("%s(line %d): "
-						"Firmware image %s not available\n",
-						__func__,__LINE__, fwu->image_name);
-				retval = -EINVAL;
-				goto exit;
-			}
-			if (NULL != fw_entry->data)
-			{
-				fw_image = fw_entry->data;
-				break;
-			}
-			tp_log_info("%s: request_firmware retry %d\n",
-					__func__, retry + 1);
-		}
-		if (retry == SYN_FW_RETRY_TIMES) {
-			tp_log_err("%s: request_firmware fail, over retry limit!\n",
-					__func__);
+		retval = request_firmware(&fw_entry, fwu->image_name,
+				&fwu->rmi4_data->i2c_client->dev);
+		if (retval != 0) {
+			tp_log_err("%s(line %d): "
+					"Firmware image %s not available\n",
+					__func__,__LINE__, fwu->image_name);
 			retval = -EINVAL;
 			goto exit;
 		}
@@ -1475,6 +1455,7 @@ static int fwu_start_reflash(void)
 				"Firmware image size = %d\n",
 				__func__,__LINE__, fw_entry->size);
 
+		fw_image = fw_entry->data;
 	}
 
 	parse_header(&header, fw_image);

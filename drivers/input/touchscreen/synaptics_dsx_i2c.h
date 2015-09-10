@@ -320,6 +320,7 @@ struct synaptics_rmi4_data {
 	struct work_struct  work;
 	/* add a delay work for easy wake up work */
 	struct delayed_work delay_work;
+	struct delayed_work glove_delay_work;
 	struct notifier_block fb_notif;
 	unsigned short f11_query_base_addr;
 	unsigned short f11_cmd_base_addr;

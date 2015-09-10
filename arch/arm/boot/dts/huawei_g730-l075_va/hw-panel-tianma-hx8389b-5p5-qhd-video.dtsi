@@ -57,12 +57,6 @@
 			39 01 00 00 05 00 03 C9 0F 00
 			39 01 00 00 00 00 02 CC 02
 			39 01 00 00 00 00 04 B7 00 00 50
-			39 01 00 00 0A 00 80 C1 01 00 08 10 18 21 2A 32 3c 44 4c 54 5c 64 6c 74 7c 84 8c 94	9c A4 Ac B4	Bc C4 Cc D4	Dc E3 Ec F4	Fc FF 00 00	00 00 00 00	00 00 00 00	08 10 18 1e	26 2e 36 3e	46 4e 56 5e	66 6e 76 7e 86 8e 96 9e	A6 ae B6 be	C6 cd D5 de	E6 EE F6 FF	00 40 00 00	00 00 00 00	00 02 0a 12	1a 22 2a 32	3a 42 4a 52	5a 62 6a 72	7a 82 8a 92	9a A2 Aa B2 Ba C2 Ca D2	Da E2 Ea F2	Fa FF 00 00	00 00 00 00	00 00 00
-			39 01 00 00 0A 00 02 E6 00
-			39 01 00 00 0A 00 02 E3 01
-			39 01 00 00 0A 00 02 E4 00
-			39 01 00 00 0A 00 12 E2 40 00 00 05 05 20 20 20 00 00 20 20 20 20 20 20 20 
-			39 01 00 00 0A 00 0B E5 00 06 03 01 00 00 80 20 00 00
 			15 01 00 00 00 00 02 51 00
 			15 01 00 00 00 00 02 53 24
 			15 01 00 00 00 00 02 55 01
@@ -86,7 +80,7 @@
 		qcom,mdss-dsi-t-clk-post = <0x04>;
 		qcom,mdss-dsi-t-clk-pre = <0x1b>;
 		qcom,mdss-dsi-bl-min-level = <10>;
-		qcom,mdss-dsi-bl-max-level = <250>;
+		qcom,mdss-dsi-bl-max-level = <255>;
 		qcom,mdss-dsi-dma-trigger = "trigger_sw";
 		qcom,mdss-dsi-mdp-trigger = "none";
 		qcom,mdss-dsi-bl-pmic-control-type = "bl_ctrl_dcs";
@@ -105,6 +99,5 @@
 		qcom,dot-inversion-cmds-dsi-state = "dsi_lp_mode";
 		qcom,column-inversion-cmds-dsi-state = "dsi_lp_mode";
 		qcom,mdss-dsi-lp11-init;
-		huawei,long-read-flag = <1>;
 	};
 };

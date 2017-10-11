@@ -222,21 +222,18 @@ static int _probe_ce_engine(struct qce_device *pce_dev)
 
 	pce_dev->ce_sps.ce_burst_size = MAX_CE_BAM_BURST_SIZE;
 
-	dev_info(pce_dev->pdev,
-			"CE device = 0x%x\n, "
-			"IO base, CE = 0x%x\n, "
-			"Consumer (IN) PIPE %d,    "
-			"Producer (OUT) PIPE %d\n"
-			"IO base BAM = 0x%x\n"
-			"BAM IRQ %d\n"
-			"Engines Availability = 0x%x\n",
-			(uint32_t) pce_dev->ce_sps.ce_device,
-			(uint32_t) pce_dev->iobase,
-			pce_dev->ce_sps.dest_pipe_index,
-			pce_dev->ce_sps.src_pipe_index,
-			(uint32_t)pce_dev->ce_sps.bam_iobase,
-			pce_dev->ce_sps.bam_irq,
-			pce_dev->engines_avail);
+	dev_info(pce_dev->pdev, "CE device = 0x%x, IO base, CE = 0x%x\n",
+		 (uint32_t) pce_dev->ce_sps.ce_device,
+		 (uint32_t) pce_dev->iobase);
+	dev_info(pce_dev->pdev, "Consumer (IN) PIPE %d, Producer (OUT) PIPE %d\n",
+		 pce_dev->ce_sps.dest_pipe_index,
+		 pce_dev->ce_sps.src_pipe_index);
+	dev_info(pce_dev->pdev, "IO base BAM = 0x%x, BAM IRQ %d\n",
+		 (uint32_t)pce_dev->ce_sps.bam_iobase,
+		 pce_dev->ce_sps.bam_irq);
+	dev_info(pce_dev->pdev, "Engines Availability = 0x%x\n",
+		 pce_dev->engines_avail);
+
 	return 0;
 };
 

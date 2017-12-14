@@ -106,6 +106,7 @@ static bool get_dload_mode(void)
 
 static void enable_emergency_dload_mode(void)
 {
+#if 0
 	if (emergency_dload_mode_addr) {
 		__raw_writel(EMERGENCY_DLOAD_MAGIC1,
 				emergency_dload_mode_addr);
@@ -121,6 +122,9 @@ static void enable_emergency_dload_mode(void)
 		qpnp_pon_wd_config(0);
 		mb();
 	}
+#else
+	printk(KERN_ERR "dload mode is not enabled on target\n");
+#endif
 }
 
 static int dload_set(const char *val, struct kernel_param *kp)
